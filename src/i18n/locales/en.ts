@@ -107,6 +107,8 @@ export const en: TranslationSchema = {
     chooseDate: 'Choose a date',
     removeDate: 'Remove date',
     setDueDateTitle: 'Set Due Date',
+    addTime: 'Set time',
+    removeTime: 'Remove time',
   },
   taskCard: {
     details: 'Details',

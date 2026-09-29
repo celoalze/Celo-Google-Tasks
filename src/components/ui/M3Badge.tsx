@@ -29,7 +29,7 @@ export const M3Badge: React.FC<M3BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-full text-[11px] font-medium leading-none shrink-0 select-none transition-colors ${
+      className={`inline-flex items-center justify-center rounded-full text-[0.6875rem] font-medium leading-none shrink-0 select-none transition-colors ${
         isSingle ? 'w-5 h-5 min-w-[20px]' : 'min-w-[20px] h-5 px-1.5'
       } ${
         active

@@ -37,10 +37,17 @@ export const DatePickerMenu: React.FC<DatePickerMenuProps> = ({
         onClose();
       }
     };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKey);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -56,7 +63,8 @@ export const DatePickerMenu: React.FC<DatePickerMenuProps> = ({
   return (
     <div
       ref={menuRef}
-      className="absolute bottom-full mb-2 right-0 w-60 bg-m3-surface-container-high rounded-2xl shadow-m3-3 py-1.5 z-50 text-xs text-m3-on-surface animate-in fade-in zoom-in-95 duration-100 select-none"
+      role="menu"
+      className="absolute bottom-full mb-2 right-0 w-60 bg-m3-surface-container-high rounded-m3-sm shadow-m3-3 py-1.5 z-50 text-xs text-m3-on-surface animate-in fade-in zoom-in-95 duration-100 select-none"
     >
       {!showCustom ? (
         <div className="space-y-0.5">
@@ -163,13 +171,17 @@ export const DatePickerMenu: React.FC<DatePickerMenuProps> = ({
           </div>
 
           <div>
+            <label htmlFor="dt-custom-date" className="sr-only">
+              {t('dateTime.chooseDate')}
+            </label>
             <input
+              id="dt-custom-date"
               type="date"
               required
               autoFocus
               value={customDate}
               onChange={(e) => setCustomDate(e.target.value)}
-              className="w-full bg-m3-surface-container-highest px-2.5 py-1.5 rounded-m3-xs text-xs text-m3-on-surface focus:outline-none cursor-pointer"
+              className="w-full bg-m3-surface-container-highest px-2.5 py-1.5 rounded-m3-xs text-xs text-m3-on-surface focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none cursor-pointer"
             />
           </div>
 
@@ -177,13 +189,13 @@ export const DatePickerMenu: React.FC<DatePickerMenuProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-2.5 py-1 text-xs text-m3-on-surface-variant hover:text-m3-on-surface"
+              className="px-2.5 py-1 text-xs text-m3-on-surface-variant hover:text-m3-on-surface focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none rounded-full"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
-              className="px-3 py-1 bg-m3-primary text-m3-on-primary rounded-m3-xs text-xs font-medium hover:brightness-105 transition-colors"
+              className="px-3 py-1 bg-m3-primary text-m3-on-primary rounded-m3-xs text-xs font-medium hover:bg-m3-primary/90 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none transition-colors"
             >
               {t('common.save')}
             </button>

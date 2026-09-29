@@ -36,9 +36,13 @@ export interface Task {
   readonly completed: boolean;
   readonly completedAt?: string;
   readonly due?: string; // RFC 3339 timestamp (e.g. 2026-09-18T21:00:00.000Z)
+  /** @local-only — persistido em localStorage, nunca enviado ao PATCH da API Google */
   readonly time?: string; // e.g. "19:00"
+  /** @local-only — persistido em localStorage, nunca enviado à API Google */
   readonly isAllDay?: boolean;
+  /** @local-only — persistido em localStorage, nunca enviado à API Google */
   readonly recurrence?: string;
+  /** @local-only — persistido em localStorage, nunca enviado à API Google */
   readonly starred?: boolean;
   readonly subtasks: readonly Subtask[];
   readonly position?: string;

@@ -1,13 +1,26 @@
 import { SupportedLocale } from '../contracts/i18n.types';
-import { useI18nStore } from '../store/useI18nStore';
 
+/**
+ * Pure locale resolution (sem importar store — evita ciclo core→store).
+ * Lê preferência persistida + navigator, com fallback.
+ */
 function getActiveLocale(overrideLocale?: SupportedLocale): SupportedLocale {
   if (overrideLocale) return overrideLocale;
   try {
-    return useI18nStore.getState().locale || 'en';
+    if (typeof localStorage !== 'undefined') {
+      const pref = localStorage.getItem('google_tasks_language_preference');
+      if (pref === 'en' || pref === 'pt-BR' || pref === 'es') return pref;
+    }
+    if (typeof navigator !== 'undefined') {
+      const lang = navigator.language || 'en';
+      if (lang.startsWith('pt')) return 'pt-BR';
+      if (lang.startsWith('es')) return 'es';
+      return 'en';
+    }
   } catch {
-    return 'en';
+    // ignore
   }
+  return 'pt-BR';
 }
 
 const I18N_DAYS_SHORT: Record<SupportedLocale, string[]> = {
@@ -43,9 +56,6 @@ const I18N_RELATIVE_WORDS: Record<SupportedLocale, { today: string; tomorrow: st
   es: { today: 'Hoy', tomorrow: 'Mañana', yesterday: 'Ayer' },
 };
 
-export const DAYS_SHORT = I18N_DAYS_SHORT['pt-BR'];
-export const MONTHS_SHORT = I18N_MONTHS_SHORT['pt-BR'];
-
 export function formatCompletedAt(
   completedAt?: string,
   updatedAt?: string,
@@ -72,22 +82,21 @@ export function formatCompletedAt(
   }
 }
 
-// Backward-compatible alias
-export const formatCompletedAtPtBr = formatCompletedAt;
-
 /**
  * Safely parses a Google Tasks RFC 3339 due string (e.g. "2026-07-10T00:00:00.000Z")
  * into a local Date representing that calendar day at local midnight, preventing timezone shift bugs.
+ * Retorna null para formato inválido (sem fallback com TZ-shift).
  */
 export function parseDueDate(dateString?: string): Date | null {
   if (!dateString) return null;
   const datePart = dateString.split('T')[0];
   const parts = datePart.split('-').map(Number);
-  if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
-    const fallback = new Date(dateString);
-    return isNaN(fallback.getTime()) ? null : fallback;
+  if (parts.length !== 3 || !Number.isInteger(parts[0]) || !Number.isInteger(parts[1]) || !Number.isInteger(parts[2])) {
+    return null;
   }
-  return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  const [y, m, d] = parts;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
 }
 
 /**
@@ -105,8 +114,6 @@ export function toGoogleDueIso(dateInput: Date | string): string {
   return `${year}-${month}-${day}T00:00:00.000Z`;
 }
 
-/**
- * Formats date matching clean Microsoft To Do / Material 3 style:
 /**
  * Formats date matching clean Microsoft To Do / Material 3 style:
  * e.g. "Hoje" / "Today" / "Hoy", "sex., 10 de jul." / "Fri, Jul 10"
@@ -155,16 +162,34 @@ export function formatDueDate(dateString?: string, locale?: SupportedLocale): st
 }
 
 /**
- * Checks whether a due date is in the past (overdue) relative to today's local date.
+ * Checks whether a due date is in the past (overdue) relative to today's local date and current time.
  */
-export function isOverdue(dateString?: string): boolean {
+export function isOverdue(dateString?: string, timeString?: string): boolean {
   const date = parseDueDate(dateString);
   if (!date) return false;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
 
-  return date.getTime() < today.getTime();
+  if (date.getTime() < todayMidnight.getTime()) {
+    return true;
+  }
+
+  // If due date is today and time is set, check if current time is past due time
+  if (date.getTime() === todayMidnight.getTime()) {
+    const effectiveTime = timeString || extractTimeFromIso(dateString);
+    if (effectiveTime) {
+      const parts = effectiveTime.split(':').map(Number);
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        const taskDueDateTime = new Date();
+        taskDueDateTime.setHours(parts[0], parts[1], 0, 0);
+        return now.getTime() > taskDueDateTime.getTime();
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -251,14 +276,52 @@ export function formatFullDate(dateInput?: string, locale?: SupportedLocale): st
   return `${day} de ${month}`;
 }
 
-export const formatFullDatePtBr = formatFullDate;
+/**
+ * Extracts "HH:mm" from an ISO timestamp if it contains a non-midnight time.
+ */
+export function extractTimeFromIso(isoString?: string): string | undefined {
+  if (!isoString || !isoString.includes('T')) return undefined;
+  const timePart = isoString.split('T')[1];
+  if (!timePart) return undefined;
+  // If time is 00:00:00.000Z or 00:00:00Z, it is normalized midnight from Google API
+  if (timePart.startsWith('00:00:00')) return undefined;
+
+  const parts = timePart.split(':');
+  if (parts.length >= 2) {
+    return `${parts[0]}:${parts[1]}`;
+  }
+  return undefined;
+}
+
+/**
+ * Formats time string (HH:mm) according to locale (e.g. "14:30" or "2:30 PM").
+ */
+export function formatTime(timeStr?: string, locale?: SupportedLocale): string {
+  if (!timeStr) return '';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return timeStr;
+
+  const l = getActiveLocale(locale);
+  if (l === 'en') {
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+    const displayMinutes = String(minutes).padStart(2, '0');
+    return `${displayHours}:${displayMinutes} ${period}`;
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
 
 /**
  * Formats badge on the task card matching official Google Tasks API
- * e.g. "Hoje" / "Amanhã" / "sex., 25 de set." / "ter., 13 de out."
+ * e.g. "Hoje, 14:30" / "Amanhã" / "sex., 25 de set., 18:00" / "ter., 13 de out."
  */
 export function formatGoogleTaskBadge(
   dueDate?: string,
+  dueTime?: string,
   locale?: SupportedLocale
 ): string | null {
   if (!dueDate) return null;
@@ -276,32 +339,129 @@ export function formatGoogleTaskBadge(
   yesterday.setDate(yesterday.getDate() - 1);
 
   const dateTime = date.getTime();
+  let baseDate = '';
+
   if (dateTime === today.getTime()) {
-    return I18N_RELATIVE_WORDS[l].today;
-  }
-  if (dateTime === tomorrow.getTime()) {
-    return I18N_RELATIVE_WORDS[l].tomorrow;
-  }
-  if (dateTime === yesterday.getTime()) {
-    return I18N_RELATIVE_WORDS[l].yesterday;
-  }
+    baseDate = I18N_RELATIVE_WORDS[l].today;
+  } else if (dateTime === tomorrow.getTime()) {
+    baseDate = I18N_RELATIVE_WORDS[l].tomorrow;
+  } else if (dateTime === yesterday.getTime()) {
+    baseDate = I18N_RELATIVE_WORDS[l].yesterday;
+  } else {
+    const dayOfWeek = I18N_DAYS_SHORT[l][date.getDay()];
+    const day = date.getDate();
+    const month = I18N_MONTHS_SHORT[l][date.getMonth()];
+    const currentYear = today.getFullYear();
 
-  const dayOfWeek = I18N_DAYS_SHORT[l][date.getDay()];
-  const day = date.getDate();
-  const month = I18N_MONTHS_SHORT[l][date.getMonth()];
-  const currentYear = today.getFullYear();
-
-  if (l === 'en') {
-    if (date.getFullYear() !== currentYear) {
-      return `${dayOfWeek}, ${month} ${day}, ${date.getFullYear()}`;
+    if (l === 'en') {
+      if (date.getFullYear() !== currentYear) {
+        baseDate = `${dayOfWeek}, ${month} ${day}, ${date.getFullYear()}`;
+      } else {
+        baseDate = `${dayOfWeek}, ${month} ${day}`;
+      }
+    } else {
+      if (date.getFullYear() !== currentYear) {
+        baseDate = `${dayOfWeek}, ${day} de ${month} de ${date.getFullYear()}`;
+      } else {
+        baseDate = `${dayOfWeek}, ${day} de ${month}`;
+      }
     }
-    return `${dayOfWeek}, ${month} ${day}`;
   }
 
-  if (date.getFullYear() !== currentYear) {
-    return `${dayOfWeek}, ${day} de ${month} de ${date.getFullYear()}`;
+  const effectiveTime = dueTime || extractTimeFromIso(dueDate);
+  if (effectiveTime) {
+    const formatted = formatTime(effectiveTime, l);
+    return `${baseDate}, ${formatted}`;
   }
-  return `${dayOfWeek}, ${day} de ${month}`;
+
+  return baseDate;
+}
+
+/**
+ * Extracts a time string "HH:mm" from text (e.g. notes or title) matching the 00:00 format.
+ */
+export function extractTimeFromText(text?: string): string | undefined {
+  if (!text) return undefined;
+
+  // 1. Check for standalone time line (e.g. "14:30" or "[14:30]")
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const lineMatch = trimmed.match(/^\[?([01]?\d|2[0-3]):([0-5]\d)\]?$/);
+    if (lineMatch) {
+      return `${lineMatch[1].padStart(2, '0')}:${lineMatch[2]}`;
+    }
+  }
+
+  // 2. Look for 00:00 pattern surrounded by non-digits
+  const match = text.match(/(?:^|[^\d:])([01]?\d|2[0-3]):([0-5]\d)(?=[^\d:]|$)/);
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
+
+  return undefined;
+}
+
+/**
+ * Returns notes with standalone time line removed for clean display in card previews.
+ */
+export function getDisplayNotes(notes?: string, _time?: string): string {
+  void _time;
+  if (!notes) return '';
+  const lines = notes.split('\n');
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    // Filter out standalone time line (e.g. "14:30" or "[14:30]")
+    if (trimmed.match(/^\[?([01]?\d|2[0-3]):([0-5]\d)\]?$/)) {
+      return false;
+    }
+    return true;
+  });
+  return filtered.join('\n').trim();
+}
+
+/**
+ * Synchronizes the time with the notes field:
+ * - If time is specified, ensures the time "HH:mm" is included in notes (on its own line).
+ * - If time is undefined, removes any standalone time line from notes.
+ */
+export function syncTimeToNotes(existingNotes?: string, time?: string): string {
+  const notes = (existingNotes || '').trim();
+
+  // If time is cleared/undefined, remove standalone time line
+  if (!time) {
+    const lines = notes ? notes.split('\n') : [];
+    const filtered = lines.filter((line) => !line.trim().match(/^\[?([01]?\d|2[0-3]):([0-5]\d)\]?$/));
+    return filtered.join('\n').trim();
+  }
+
+  // Evita falso-positivo de substring ("14:30" em "114:300"): verifica linha exata.
+  const existingLines = notes ? notes.split('\n') : [];
+  if (existingLines.some((line) => line.trim() === time)) return notes;
+
+  const lines = [...existingLines];
+  let replaced = false;
+
+  // Replace any existing standalone time line with the new time
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().match(/^\[?([01]?\d|2[0-3]):([0-5]\d)\]?$/)) {
+      lines[i] = time;
+      replaced = true;
+      break;
+    }
+  }
+
+  if (replaced) {
+    return lines.join('\n').trim();
+  }
+
+  // If there are other notes, prepend time on its own line
+  if (notes) {
+    return `${time}\n${notes}`;
+  }
+
+  // Otherwise, notes is just the time
+  return time;
 }
 
 

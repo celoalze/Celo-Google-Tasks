@@ -28,10 +28,10 @@ export const M3NavItem: React.FC<M3NavItemProps> = ({
   title,
   disabled = false,
 }) => {
-  const baseClasses = `group w-full h-10 min-h-[40px] px-4 rounded-full flex items-center justify-between text-sm font-medium transition-colors duration-150 select-none text-left cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
+  const baseClasses = `group w-full h-10 min-h-[40px] px-4 rounded-full flex items-center justify-between text-sm font-medium transition-colors duration-150 select-none text-left cursor-pointer focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
     active
       ? 'bg-m3-primary-container text-m3-on-primary-container'
-      : 'text-m3-on-surface-variant hover:bg-black/5 dark:hover:bg-[#292929] hover:text-m3-on-surface'
+      : 'text-m3-on-surface-variant hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 hover:text-m3-on-surface'
   } ${className}`;
 
   const content = (
@@ -65,35 +65,15 @@ export const M3NavItem: React.FC<M3NavItemProps> = ({
     </>
   );
 
-  // If a custom leading element (like a checkbox button) is present, render as div to avoid nested <button> HTML violations
-  if (leading) {
-    return (
-      <div
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        title={title}
-        onClick={(e) => {
-          if (!disabled && onClick) onClick(e);
-        }}
-        onKeyDown={(e) => {
-          if (!disabled && (e.key === 'Enter' || e.key === ' ') && onClick) {
-            e.preventDefault();
-            onClick(e as unknown as React.MouseEvent);
-          }
-        }}
-        className={baseClasses}
-      >
-        {content}
-      </div>
-    );
-  }
-
+  // Sempre <button> (sem div[role=button] aninhado). `leading` deve ser não-interativo;
+  // toggles interativos vão em `trailing` com stopPropagation no caller.
   return (
     <button
       type="button"
       title={title}
       disabled={disabled}
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={baseClasses}
     >
       {content}

@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import { ThemeMode, FontSizeLevel, ThemePreferencesState } from '../contracts/theme.types';
+import { ThemeMode, FontSizeLevel, ThemePreferences } from '../contracts/theme.types';
+
+export interface ThemeActions {
+  setThemeMode: (mode: ThemeMode) => void;
+  setFontSizeLevel: (level: FontSizeLevel) => void;
+  initTheme: () => void;
+}
+
+export type ThemeStore = ThemePreferences & ThemeActions;
 
 const THEME_STORAGE_KEY = 'google_tasks_theme_mode';
 const FONT_SIZE_STORAGE_KEY = 'google_tasks_font_size';
@@ -58,7 +66,7 @@ function applyFontScaleToDom(level: FontSizeLevel) {
 
 let isMediaListenerAttached = false;
 
-export const useThemeStore = create<ThemePreferencesState>((set, get) => ({
+export const useThemeStore = create<ThemeStore>((set, get) => ({
   themeMode: 'system',
   effectiveTheme: 'dark',
   fontSizeLevel: 'normal',

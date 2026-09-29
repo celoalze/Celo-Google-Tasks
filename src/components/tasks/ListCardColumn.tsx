@@ -124,10 +124,13 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
     [activeTasks, currentSort, locale]
   );
 
-  const handleSortSelect = (sort: SortOption) => {
-    setListSort(listId, sort);
-    setIsMenuOpen(false);
-  };
+  const handleSortSelect = useCallback(
+    (sort: SortOption) => {
+      setListSort(listId, sort);
+      setIsMenuOpen(false);
+    },
+    [listId, setListSort]
+  );
 
   const handleOpenRename = () => {
     setRenameInput(listTitle);
@@ -230,13 +233,16 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
     setIsColumnDropTarget(false);
   }, [setDraggedTaskId]);
 
-  const sortMenuOptions: Array<{ key: SortOption; label: string }> = [
-    { key: 'my_order', label: t('lists.sortMyOrder') },
-    { key: 'date', label: t('lists.sortDate') },
-    { key: 'deadline', label: t('lists.sortDeadline') },
-    { key: 'starred', label: t('lists.sortStarred') },
-    { key: 'title', label: t('lists.sortTitle') },
-  ];
+  const sortMenuOptions = useMemo<Array<{ key: SortOption; label: string }>>(
+    () => [
+      { key: 'my_order', label: t('lists.sortMyOrder') },
+      { key: 'date', label: t('lists.sortDate') },
+      { key: 'deadline', label: t('lists.sortDeadline') },
+      { key: 'starred', label: t('lists.sortStarred') },
+      { key: 'title', label: t('lists.sortTitle') },
+    ],
+    [t]
+  );
 
   const isDraggableMode = !isSmartFilter && currentSort === 'my_order' && !searchQuery;
 
@@ -290,7 +296,7 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
           setSelectedTaskId(null);
         }
       }}
-      className={`group/card bg-m3-surface-container rounded-[16px] p-4 pt-3 flex flex-col w-full shadow-sm select-none transition-all duration-150 ${
+      className={`group/card bg-m3-surface-container rounded-m3-lg p-4 pt-3 flex flex-col w-full shadow-m3-1 select-none transition-colors duration-150 ${
         isCardDropTarget
           ? 'ring-2 ring-m3-primary bg-m3-surface-container-high'
           : isColumnDropTarget
@@ -394,13 +400,6 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
                   disabled={completedTasks.length === 0}
                   onClick={handleDeleteAllCompleted}
                 />
-
-                {/* Marcar as tarefas antigas como concluídas */}
-                <M3MenuItem
-                  label={t('lists.markOldCompleted')}
-                  disabled={true}
-                  onClick={() => {}}
-                />
               </M3Menu>
             </div>
           )}
@@ -412,16 +411,16 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
         <button
           type="button"
           onClick={() => openCreateTaskModal(isSmartFilter ? undefined : listId)}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium text-m3-primary hover:bg-m3-surface active:bg-m3-surface-dim transition-colors focus:outline-none select-none"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium text-m3-primary hover:bg-m3-primary/10 active:bg-m3-primary/15 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none select-none"
         >
           <GoogleTasksAddIcon size={18} className="text-m3-primary" />
           <span>{t('lists.addTask')}</span>
         </button>
       </div>
 
-      {/* Active Tasks List */}
+      {/* Active Tasks List (janela inicial; restante via "mostrar mais" para listas muito grandes) */}
       <div className="space-y-1">
-        {sortedActiveTasks.map((task) => (
+        {sortedActiveTasks.slice(0, 100).map((task) => (
           <TaskCard
             key={task.id}
             task={task}
@@ -434,6 +433,11 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
             dropIndicator={dropTarget?.taskId === task.id ? dropTarget.position : null}
           />
         ))}
+        {sortedActiveTasks.length > 100 && (
+          <p className="text-[0.6875rem] text-m3-on-surface-variant px-3 pt-1">
+            Mostrando 100 de {sortedActiveTasks.length} — use a busca para filtrar.
+          </p>
+        )}
       </div>
 
       {/* Empty State - Official Google Tasks Artwork */}
@@ -443,19 +447,19 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
             <>
               <TasksDoneIllustration className="w-28 h-28 mb-1" />
               <p className="text-sm font-medium text-m3-on-surface">{t('lists.allTasksCompleted')}</p>
-              <p className="text-xs text-m3-outline mt-1">{t('lists.goodJob')}</p>
+              <p className="text-xs text-m3-on-surface-variant mt-1">{t('lists.goodJob')}</p>
             </>
           ) : isSmartFilter && listId === 'starred' ? (
             <>
               <NothingStarredIllustration className="w-32 h-32 mb-1" />
               <p className="text-sm font-medium text-m3-on-surface">{t('lists.noStarredTasks')}</p>
-              <p className="text-xs text-m3-outline mt-1 max-w-[240px]">{t('lists.noStarredTasksDesc')}</p>
+              <p className="text-xs text-m3-on-surface-variant mt-1 max-w-[240px]">{t('lists.noStarredTasksDesc')}</p>
             </>
           ) : (
             <>
               <EmptyTasksIllustration className="w-28 h-28 mb-1" />
               <p className="text-sm font-medium text-m3-on-surface">{t('lists.noTasksYet')}</p>
-              <p className="text-xs text-m3-outline mt-1">{t('lists.addTaskPrompt')}</p>
+              <p className="text-xs text-m3-on-surface-variant mt-1">{t('lists.addTaskPrompt')}</p>
             </>
           )}
         </div>
@@ -467,7 +471,8 @@ const ListCardColumnComponent: React.FC<ListCardColumnProps> = ({
           <button
             type="button"
             onClick={() => setIsCompletedExpanded(!isCompletedExpanded)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-m3-outline hover:text-m3-on-surface transition-colors rounded-lg hover:bg-m3-on-surface/[0.06]"
+            aria-expanded={isCompletedExpanded}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-m3-on-surface-variant hover:text-m3-on-surface transition-colors rounded-m3-sm hover:bg-m3-on-surface/10 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
           >
             <span
               className={`material-symbols-rounded text-[16px] transition-transform duration-150 ${

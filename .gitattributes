@@ -1,2 +1,15 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files and normalize to LF on commit, checkout as LF everywhere.
+# This overrides core.autocrlf on every machine: identical checkouts on
+# Windows, Linux and macOS, and no LF/CRLF conversion warnings.
+* text=auto eol=lf
+
+# Binaries
+*.ico binary
+*.png binary
+*.woff2 binary
+*.exe binary
+*.blockmap binary
+
+# Vendored build output (se forçar add, trata como vendored)
+dist/** linguist-vendored
+dist-electron/** linguist-vendored

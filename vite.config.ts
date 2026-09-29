@@ -6,6 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
     electron([
@@ -25,10 +26,11 @@ export default defineConfig({
     {
       name: 'copy-preload-cjs',
       closeBundle() {
-        fs.copyFileSync(
-          path.resolve(__dirname, 'electron/preload.cjs'),
-          path.resolve(__dirname, 'dist-electron/preload.cjs')
-        );
+        const src = path.resolve(__dirname, 'electron/preload.cjs');
+        const dest = path.resolve(__dirname, 'dist-electron/preload.cjs');
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest);
+        }
       },
     },
   ],

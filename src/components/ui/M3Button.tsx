@@ -1,4 +1,5 @@
 import React from 'react';
+import { cn } from '../../utils/cn';
 
 export type M3ButtonVariant = 'text' | 'filled' | 'tonal' | 'elevated' | 'danger';
 export type M3ButtonSize = 'sm' | 'md' | 'lg';
@@ -38,28 +39,32 @@ export const M3Button: React.FC<M3ButtonProps> = ({
 
   const shapeClasses: Record<M3ButtonShape, string> = {
     pill: 'rounded-full',
-    rounded: 'rounded-2xl',
+    rounded: 'rounded-m3-lg',
   };
 
   const variantClasses: Record<M3ButtonVariant, string> = {
-    text: 'text-m3-primary hover:bg-m3-primary/10 active:bg-m3-primary/20 disabled:text-m3-outline/40 disabled:hover:bg-transparent',
+    text: 'text-m3-primary hover:bg-m3-primary/10 active:bg-m3-primary/15 disabled:text-m3-outline/40 disabled:hover:bg-transparent',
     filled:
-      'bg-m3-primary text-m3-on-primary hover:brightness-105 active:brightness-110 shadow-sm disabled:opacity-40 disabled:hover:brightness-100',
+      'bg-m3-primary text-m3-on-primary hover:shadow-m3-1 shadow-m3-1 disabled:opacity-40 relative overflow-hidden hover:bg-m3-primary/90 active:bg-m3-primary/80 disabled:hover:bg-m3-primary',
     tonal:
-      'bg-m3-surface-container-highest text-m3-on-surface hover:bg-m3-surface-bright hover:shadow-md active:bg-m3-outline-variant disabled:opacity-40',
+      'bg-m3-surface-container-highest text-m3-on-surface hover:bg-m3-on-surface/10 hover:shadow-m3-1 active:bg-m3-on-surface/15 disabled:opacity-40',
     elevated:
-      'bg-m3-surface-container text-m3-on-surface hover:bg-m3-surface-container-high shadow-md hover:shadow-lg disabled:opacity-40',
+      'bg-m3-surface-container text-m3-on-surface hover:bg-m3-on-surface/10 shadow-m3-1 hover:shadow-m3-2 active:bg-m3-on-surface/15 disabled:opacity-40',
     danger:
-      'text-m3-error hover:bg-m3-error/10 active:bg-m3-error/20 disabled:text-m3-error/40 disabled:hover:bg-transparent',
+      'text-m3-error hover:bg-m3-error/10 active:bg-m3-error/15 disabled:text-m3-error/40 disabled:hover:bg-transparent',
   };
 
   return (
     <button
       type="button"
       disabled={disabled}
-      className={`inline-flex items-center justify-center transition-all duration-150 focus:outline-none select-none disabled:cursor-not-allowed ${
-        shapeClasses[shape]
-      } ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
+      className={cn(
+        'inline-flex items-center justify-center transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:ring-offset-2 focus-visible:outline-none ring-offset-m3-surface select-none disabled:cursor-not-allowed',
+        shapeClasses[shape],
+        sizeClasses[size],
+        variantClasses[variant],
+        className
+      )}
       {...rest}
     >
       {icon && iconPosition === 'leading' && (

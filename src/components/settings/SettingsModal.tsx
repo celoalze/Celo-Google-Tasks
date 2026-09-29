@@ -8,6 +8,7 @@ import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 import { M3Switch } from '../ui/M3Switch';
 import { M3IconButton } from '../ui/M3IconButton';
 import { M3Menu, M3MenuItem } from '../ui/M3Menu';
+import { UserAvatar } from '../ui/UserAvatar';
 import { getActiveClientId, getActiveClientSecret } from '../../config/auth.config';
 import {
   testDesktopNotification,
@@ -35,19 +36,22 @@ const languageOptions: { key: LanguagePreference; labelKey: string }[] = [
 ];
 
 export const SettingsModal: React.FC = () => {
-  const {
-    isSettingsOpen,
-    setIsSettingsOpen,
-    isGoogleConnected,
-    disconnectGoogle,
-    user,
-    isSyncing,
-    lastSyncedAt,
-    syncTasks,
-  } = useTaskStore();
+  const isSettingsOpen = useTaskStore((s) => s.isSettingsOpen);
+  const setIsSettingsOpen = useTaskStore((s) => s.setIsSettingsOpen);
+  const isGoogleConnected = useTaskStore((s) => s.isGoogleConnected);
+  const disconnectGoogle = useTaskStore((s) => s.disconnectGoogle);
+  const user = useTaskStore((s) => s.user);
+  const isSyncing = useTaskStore((s) => s.isSyncing);
+  const lastSyncedAt = useTaskStore((s) => s.lastSyncedAt);
+  const syncTasks = useTaskStore((s) => s.syncTasks);
 
-  const { themeMode, setThemeMode, fontSizeLevel, setFontSizeLevel } = useThemeStore();
-  const { preference, setLanguagePreference, t } = useI18nStore();
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const setThemeMode = useThemeStore((s) => s.setThemeMode);
+  const fontSizeLevel = useThemeStore((s) => s.fontSizeLevel);
+  const setFontSizeLevel = useThemeStore((s) => s.setFontSizeLevel);
+  const preference = useI18nStore((s) => s.preference);
+  const setLanguagePreference = useI18nStore((s) => s.setLanguagePreference);
+  const t = useI18nStore((s) => s.t);
 
   const [clientId, setClientId] = useState(getActiveClientId);
   const [clientSecret, setClientSecret] = useState(() => getActiveClientSecret() || '');
@@ -139,8 +143,8 @@ export const SettingsModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
-      <div className="bg-m3-surface-container-high rounded-m3-2xl max-w-md w-full p-6 shadow-m3-3 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+    <div role="dialog" aria-modal="true" aria-label={t('settings.title')} className="fixed inset-0 bg-m3-scrim/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
+      <div className="bg-m3-surface-container-high rounded-m3-3xl max-w-md w-full p-6 shadow-m3-3 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-4">
           <div className="flex items-center gap-2.5">
@@ -177,16 +181,17 @@ export const SettingsModal: React.FC = () => {
               <label className="text-[11px] font-medium text-m3-on-surface-variant">
                 {t('settings.theme')}
               </label>
-              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-m3-surface-container">
+              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-m3-lg bg-m3-surface-container">
                 {themeOptions.map((opt) => (
                   <button
                     key={opt.key}
                     type="button"
                     onClick={() => setThemeMode(opt.key)}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-medium transition-all select-none ${
+                    aria-pressed={themeMode === opt.key}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-full text-xs font-medium transition-colors select-none focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none ${
                       themeMode === opt.key
-                        ? 'bg-m3-primary-container text-m3-on-primary-container shadow-sm'
-                        : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-black/5 dark:hover:bg-[#292929]'
+                        ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
+                        : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15'
                     }`}
                   >
                     <span className="material-symbols-rounded text-[18px]">
@@ -203,16 +208,17 @@ export const SettingsModal: React.FC = () => {
               <label className="text-[11px] font-medium text-m3-on-surface-variant">
                 {t('settings.fontSize')}
               </label>
-              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-m3-surface-container">
+              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-m3-lg bg-m3-surface-container">
                 {fontSizeOptions.map((opt) => (
                   <button
                     key={opt.key}
                     type="button"
                     onClick={() => setFontSizeLevel(opt.key)}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-medium transition-all select-none ${
+                    aria-pressed={fontSizeLevel === opt.key}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-full text-xs font-medium transition-colors select-none focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none ${
                       fontSizeLevel === opt.key
-                        ? 'bg-m3-primary-container text-m3-on-primary-container shadow-sm'
-                        : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-black/5 dark:hover:bg-[#292929]'
+                        ? 'bg-m3-primary-container text-m3-on-primary-container shadow-m3-1'
+                        : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15'
                     }`}
                   >
                     <span className="font-bold text-[13px]">{opt.indicator}</span>
@@ -233,7 +239,7 @@ export const SettingsModal: React.FC = () => {
                   onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
                   aria-haspopup="listbox"
                   aria-expanded={isLangDropdownOpen}
-                  className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-medium transition-all select-none focus:outline-none focus:ring-2 focus:ring-m3-primary ${
+                  className={`w-full flex items-center justify-between py-2 px-3 rounded-m3-md text-xs font-medium transition-colors select-none focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none ${
                     isLangDropdownOpen
                       ? 'bg-m3-surface-container-highest text-m3-on-surface shadow-sm'
                       : 'bg-m3-surface-container text-m3-on-surface hover:bg-m3-surface-container-highest'
@@ -302,22 +308,21 @@ export const SettingsModal: React.FC = () => {
           {isGoogleConnected ? (
             <div className="space-y-4">
               <div className="p-4 rounded-m3-lg bg-m3-surface-container flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-m3-primary-container text-m3-on-primary-container flex items-center justify-center text-sm font-semibold overflow-hidden flex-shrink-0">
-                  {user.photoUrl ? (
-                    <img src={user.photoUrl} alt={user.displayName} className="w-full h-full object-cover" />
-                  ) : (
-                    user.displayName.substring(0, 2).toUpperCase()
-                  )}
-                </div>
+                <UserAvatar
+                  photoUrl={user.photoUrl}
+                  displayName={user.displayName}
+                  email={user.email}
+                  size="xl"
+                />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                  <div className="flex items-center gap-1.5 text-xs text-m3-success font-medium">
                     <span className="material-symbols-rounded text-[16px]">check_circle</span>
                     <span>{t('settings.connectedWithGoogle')}</span>
                   </div>
                   <h3 className="text-sm font-medium text-m3-on-surface truncate">
                     {user.displayName}
                   </h3>
-                  <p className="text-xs text-m3-on-surface-variant/70 truncate">
+                  <p className="text-xs text-m3-on-surface-variant truncate">
                     {user.email}
                   </p>
                 </div>
@@ -371,7 +376,7 @@ export const SettingsModal: React.FC = () => {
                 </div>
 
                 {syncStatusMessage && (
-                  <div className="text-[11px] text-emerald-400 bg-emerald-950/30 p-2 rounded-lg text-center animate-in fade-in">
+                  <div role="status" className="text-[0.6875rem] text-m3-success bg-m3-success/15 p-2 rounded-m3-sm text-center animate-in fade-in">
                     {syncStatusMessage}
                   </div>
                 )}
@@ -453,7 +458,7 @@ export const SettingsModal: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-emerald-400">
+                      <span className="text-[0.6875rem] text-m3-success">
                         {savedSuccess && t('settings.keysSaved')}
                       </span>
                       <button
@@ -507,7 +512,7 @@ export const SettingsModal: React.FC = () => {
                   safeTimeout(() => setTestNotifStatus(null), 4000);
                 }
               }}
-              className="w-full py-2 px-3 rounded-xl bg-m3-on-surface/[0.05] hover:bg-m3-on-surface/[0.1] text-xs text-m3-primary font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-2 px-3 rounded-m3-md bg-m3-on-surface/10 hover:bg-m3-on-surface/15 text-xs text-m3-primary font-medium flex items-center justify-center gap-2 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="material-symbols-rounded text-[18px]">
                 campaign
@@ -516,7 +521,7 @@ export const SettingsModal: React.FC = () => {
             </button>
 
             {testNotifStatus && (
-              <div className="text-[11px] text-emerald-400 bg-emerald-950/30 p-2 rounded-lg text-center animate-in fade-in">
+              <div role="status" className="text-[0.6875rem] text-m3-success bg-m3-success/15 p-2 rounded-m3-sm text-center animate-in fade-in">
                 {testNotifStatus}
               </div>
             )}

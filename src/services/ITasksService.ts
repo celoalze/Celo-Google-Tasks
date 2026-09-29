@@ -1,6 +1,9 @@
 import { Result } from '../contracts/api.types';
 import { Task, TaskList, UserProfile } from '../contracts/tasks.types';
 
+/** Campos graváveis na Google Tasks API v1 (PATCH). Locais (starred/time/...) ficam só no store. */
+export type GoogleUpdatable = Pick<Task, 'title' | 'notes' | 'due' | 'completed' | 'listId'>;
+
 export interface ITasksService {
   getUserProfile(): Promise<Result<UserProfile>>;
   getLists(): Promise<Result<TaskList[]>>;

@@ -76,5 +76,10 @@ Because this is a 100% open-source, client-side application, your credentials an
 ### Error: `invalid_client`
 * Double-check that you selected **Desktop app** when creating the OAuth Client ID, and verify that there are no leading or trailing spaces in the Client ID or Secret.
 
+### Error: `client_secret is missing` in the code → token exchange
+* Even with PKCE, Google requires the `client_secret` for most Client IDs.
+  Fill in both **Client ID and Client Secret** under Settings > Google (or via
+  `VITE_GOOGLE_CLIENT_ID` / `VITE_GOOGLE_CLIENT_SECRET` in `.env` for dev) and try again.
+
 ### Revoking Access
 * You can disconnect anytime from the app's Settings dialog, or revoke permissions directly in your [Google Account Permissions Manager](https://myaccount.google.com/permissions).

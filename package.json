@@ -2,13 +2,26 @@
   "name": "google-tasks-desktop",
   "version": "1.0.0",
   "type": "module",
-  "description": "Google Tasks Desktop App with Microsoft To Do & Material Design 3 experience",
+  "description": "Cliente desktop Windows para Google Tasks (API v1) com experiência Material Design 3",
   "main": "dist-electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/celoalze/Celo-Google-Tasks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/celoalze/Celo-Google-Tasks/issues"
+  },
+  "homepage": "https://github.com/celoalze/Celo-Google-Tasks#readme",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "npm run build && electron-builder --win",
+    "dist:portable": "npm run build && electron-builder --win portable",
+    "dist:nsis": "npm run build && electron-builder --win nsis",
+    "dist:dir": "npm run build && electron-builder --win --dir"
   },
   "keywords": [
     "google-tasks",
@@ -18,8 +31,11 @@
     "material-design-3",
     "todo"
   ],
-  "author": "",
+  "author": "Celo Zaga",
   "license": "MIT",
+  "engines": {
+    "node": ">=20 <25"
+  },
   "dependencies": {
     "clsx": "^2.1.1",
     "react": "^19.0.0",
@@ -34,6 +50,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
     "electron": "^34.2.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",

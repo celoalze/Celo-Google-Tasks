@@ -2,8 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useI18nStore } from '../../store/useI18nStore';
 import { calculateCounts } from '../../core/smartFilters';
-import { M3Button, M3Dialog, M3TextField, M3NavItem } from '../ui';
-import { GoogleTasksAddIcon } from '../ui/icons/GoogleTasksAddIcon';
+import { M3Button, M3Dialog, M3TextField, M3NavItem, UserAvatar } from '../ui';
 
 export const Sidebar: React.FC = () => {
   const lists = useTaskStore((state) => state.lists);
@@ -52,7 +51,7 @@ export const Sidebar: React.FC = () => {
         variant="tonal"
         size="lg"
         shape="rounded"
-        icon={<GoogleTasksAddIcon size={20} className="text-m3-primary" />}
+        icon="add"
         onClick={() => openCreateTaskModal()}
         className="mb-5 shadow-md self-start !px-5 !py-3.5 !text-sm"
       >
@@ -87,7 +86,8 @@ export const Sidebar: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsListsExpanded(!isListsExpanded)}
-          className="w-full h-10 min-h-[40px] px-4 rounded-full flex items-center justify-between text-sm font-medium text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-black/5 dark:hover:bg-[#292929] transition-colors focus:outline-none"
+          aria-expanded={isListsExpanded}
+          className="w-full h-10 min-h-[40px] px-4 rounded-full flex items-center justify-between text-sm font-medium text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
         >
           <span>{t('nav.lists')}</span>
           <div className="w-5 h-5 shrink-0 ml-2 flex items-center justify-center">
@@ -153,20 +153,29 @@ export const Sidebar: React.FC = () => {
                     active={isActive}
                     badge={count > 0 ? count : undefined}
                     onClick={() => setActiveFilter(list.id)}
-                    leading={
-                      <button
-                        type="button"
+                    trailing={
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={isVisible ? t('nav.hideFromBoard') : t('nav.showOnBoard')}
+                        title={isVisible ? t('nav.hideFromBoard') : t('nav.showOnBoard')}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleListVisibility(list.id);
                         }}
-                        title={isVisible ? t('nav.hideFromBoard') : t('nav.showOnBoard')}
-                        className="w-5 h-5 flex items-center justify-center text-m3-outline hover:text-m3-primary transition-colors focus:outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleListVisibility(list.id);
+                          }
+                        }}
+                        className="w-5 h-5 flex items-center justify-center text-m3-on-surface-variant hover:text-m3-primary transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none rounded-full"
                       >
-                        <span className="material-symbols-rounded text-[20px]">
+                        <span className="material-symbols-rounded text-[1.25rem]" aria-hidden>
                           {isVisible ? 'check_box' : 'check_box_outline_blank'}
                         </span>
-                      </button>
+                      </span>
                     }
                   />
                 </div>
@@ -196,24 +205,23 @@ export const Sidebar: React.FC = () => {
               ? `${user.displayName} (${user.email}) - ${t('common.settings')}`
               : t('nav.connectGoogle')
           }
-          className="group w-full h-12 min-h-[48px] px-4 rounded-full flex items-center justify-between hover:bg-black/5 dark:hover:bg-[#292929] active:bg-m3-on-surface/10 transition-colors text-left focus:outline-none"
+          className="group w-full min-h-[52px] py-1.5 px-3 rounded-full flex items-center justify-between hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors text-left focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            {/* Avatar Circle */}
-            <div className="w-8 h-8 rounded-full bg-m3-primary-container text-m3-on-primary-container flex items-center justify-center text-xs font-semibold overflow-hidden flex-shrink-0">
-              {user.photoUrl ? (
-                <img src={user.photoUrl} alt={user.displayName} className="w-full h-full object-cover" />
-              ) : (
-                <span>{user.displayName ? user.displayName.substring(0, 2).toUpperCase() : 'GT'}</span>
-              )}
-            </div>
+            {/* Avatar Circle with referrerPolicy & graceful fallback */}
+            <UserAvatar
+              photoUrl={isGoogleConnected ? user.photoUrl : undefined}
+              displayName={isGoogleConnected ? user.displayName : 'Google Tasks'}
+              email={isGoogleConnected ? user.email : undefined}
+              size="lg"
+            />
 
             {/* User Name & Email */}
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-m3-on-surface truncate">
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <div className="text-sm font-medium text-m3-on-surface truncate leading-tight">
                 {isGoogleConnected ? user.displayName : 'Google Tasks'}
               </div>
-              <div className="text-[11px] text-m3-outline truncate group-hover:text-m3-on-surface-variant transition-colors">
+              <div className="text-xs text-m3-on-surface-variant truncate leading-tight mt-0.5">
                 {isGoogleConnected ? user.email : t('nav.connectGoogle')}
               </div>
             </div>
@@ -221,7 +229,7 @@ export const Sidebar: React.FC = () => {
 
           {/* Settings Icon in standardized 20x20 slot */}
           <div className="w-5 h-5 shrink-0 ml-2 flex items-center justify-center">
-            <span className="material-symbols-rounded text-[20px] text-m3-outline group-hover:text-m3-on-surface transition-colors">
+            <span className="material-symbols-rounded text-[20px] text-m3-on-surface-variant group-hover:text-m3-on-surface transition-colors">
               settings
             </span>
           </div>

@@ -2,7 +2,13 @@ export type SupportedLocale = 'en' | 'pt-BR' | 'es';
 
 export type LanguagePreference = 'system' | SupportedLocale;
 
-export interface TranslationSchema {
+export type DeepReadonly<T> = T extends string | number | boolean | null | undefined
+  ? T
+  : T extends ReadonlyArray<infer U>
+    ? ReadonlyArray<DeepReadonly<U>>
+    : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
+interface MutableTranslationSchema {
   common: {
     save: string;
     cancel: string;
@@ -54,7 +60,7 @@ export interface TranslationSchema {
     noStarredTasksDesc: string;
     allTasksCompleted: string;
     goodJob: string;
-    completedHeader: string; // e.g. "Completed ({count})"
+    completedHeader: string;
     renameDialogTitle: string;
     deleteDialogTitle: string;
     deleteDialogConfirm: string;
@@ -109,14 +115,16 @@ export interface TranslationSchema {
     chooseDate: string;
     removeDate: string;
     setDueDateTitle: string;
+    addTime: string;
+    removeTime: string;
   };
   taskCard: {
     details: string;
     markCompleted: string;
     markIncomplete: string;
-    completedAt: string; // e.g. "Completed on: {date}"
-    nextDue: string;     // e.g. "Next: {date}"
-    subtasksCount: string; // e.g. "{completed}/{total}" or "{total} subtasks"
+    completedAt: string;
+    nextDue: string;
+    subtasksCount: string;
     hasDetails: string;
     starTask: string;
     unstarTask: string;
@@ -183,3 +191,5 @@ export interface TranslationSchema {
     close: string;
   };
 }
+
+export type TranslationSchema = DeepReadonly<MutableTranslationSchema>;

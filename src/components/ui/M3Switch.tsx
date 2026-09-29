@@ -24,7 +24,7 @@ export const M3Switch: React.FC<M3SwitchProps> = ({
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
-      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
+      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors duration-200 ease-in-out focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:ring-offset-2 focus-visible:outline-none ring-offset-m3-surface disabled:opacity-40 disabled:cursor-not-allowed ${
         checked ? 'bg-m3-primary' : 'bg-m3-surface-container-highest'
       }`}
     >

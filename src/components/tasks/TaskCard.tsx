@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Task } from '../../contracts/tasks.types';
-import { formatGoogleTaskBadge, isOverdue, formatCompletedAt } from '../../core/dateUtils';
+import { formatGoogleTaskBadge, isOverdue, formatCompletedAt, getDisplayNotes } from '../../core/dateUtils';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useI18nStore } from '../../store/useI18nStore';
 import { M3Checkbox } from '../ui/M3Checkbox';
@@ -73,28 +73,34 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
 
   useEffect(() => {
     if (titleTextareaRef.current) {
-      titleTextareaRef.current.style.height = 'auto';
-      titleTextareaRef.current.style.height = `${titleTextareaRef.current.scrollHeight}px`;
+      const el = titleTextareaRef.current;
+      requestAnimationFrame(() => {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      });
     }
   }, [localTitle, isExpanded]);
 
   useEffect(() => {
     if (notesTextareaRef.current) {
-      notesTextareaRef.current.style.height = 'auto';
-      notesTextareaRef.current.style.height = `${notesTextareaRef.current.scrollHeight}px`;
+      const el = notesTextareaRef.current;
+      requestAnimationFrame(() => {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      });
     }
   }, [localNotes, isExpanded, isAddingNotes]);
 
-  const handleSaveTitle = () => {
+  const handleSaveTitle = useCallback(() => {
     const trimmed = localTitle.trim();
     if (trimmed && trimmed !== task.title) {
       updateTask(task.id, { title: trimmed });
     } else if (!trimmed) {
       setLocalTitle(task.title);
     }
-  };
+  }, [localTitle, task.title, task.id, updateTask]);
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = useCallback(() => {
     const trimmed = localNotes.trim();
     if (trimmed !== (task.notes || '').trim()) {
       updateTask(task.id, { notes: trimmed });
@@ -102,15 +108,24 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
     if (!trimmed) {
       setIsAddingNotes(false);
     }
-  };
+  }, [localNotes, task.notes, task.id, updateTask]);
 
-  const formattedDue = formatGoogleTaskBadge(task.due, locale);
-  const overdue = !task.completed && isOverdue(task.due);
+  const formattedDue = useMemo(
+    () => formatGoogleTaskBadge(task.due, task.time, locale),
+    [task.due, task.time, locale]
+  );
+  const overdue = useMemo(
+    () => !task.completed && isOverdue(task.due, task.time),
+    [task.completed, task.due, task.time]
+  );
 
-  const completedSubtasksCount = task.subtasks.filter((s) => s.completed).length;
+  const completedSubtasksCount = useMemo(
+    () => task.subtasks.filter((s) => s.completed).length,
+    [task.subtasks]
+  );
   const totalSubtasksCount = task.subtasks.length;
 
-  const handleCardClick = () => {
+  const handleCardClick = useCallback(() => {
     // If context menu is open, let click dismiss it
     if (contextMenuPos) {
       setContextMenuPos(null);
@@ -118,35 +133,59 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
     }
     // Toggle in-place expansion
     setSelectedTaskId(isExpanded ? null : task.id);
-  };
+  }, [contextMenuPos, isExpanded, setSelectedTaskId, task.id]);
 
-  const handleCardDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    openEditTaskModal(task);
-  };
+  const handleCardDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      openEditTaskModal(task);
+    },
+    [openEditTaskModal, task]
+  );
 
-  const handleContextMenu = (e: React.MouseEvent) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
-  };
+  }, []);
 
-  const handleMoreButtonClick = (e: React.MouseEvent) => {
+  const handleMoreButtonClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     setContextMenuPos({ x: rect.left, y: rect.bottom + 4 });
-  };
+  }, []);
 
-  const handleStarClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleTaskStar(task.id);
-  };
+  const handleStarClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTaskStar(task.id);
+    },
+    [toggleTaskStar, task.id]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && e.target === e.currentTarget) {
+        e.preventDefault();
+        handleCardClick();
+      } else if ((e.shiftKey && e.key === 'F10') || (e.key === 'Menu')) {
+        e.preventDefault();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setContextMenuPos({ x: rect.left + 40, y: rect.bottom });
+      }
+    },
+    [handleCardClick]
+  );
 
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        aria-label={task.title}
         draggable={isDraggable && isExpanded}
         onDragStart={(e) => onDragStart && onDragStart(e, task.id)}
         onDragOver={(e) => onDragOver && onDragOver(e, task.id)}
@@ -154,12 +193,13 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
         onDrop={(e) => onDrop && onDrop(e, task.id)}
         onDragEnd={onDragEnd}
         onClick={handleCardClick}
+        onKeyDown={handleKeyDown}
         onDoubleClick={handleCardDoubleClick}
         onContextMenu={handleContextMenu}
-        className={`group relative flex flex-col px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer select-none ${
+        className={`group relative flex flex-col px-3 py-2.5 rounded-m3-lg transition-colors duration-150 cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none ${
           isExpanded
-            ? 'bg-m3-surface-container-high ring-1 ring-m3-outline-variant/30 shadow-sm'
-            : 'bg-transparent hover:bg-m3-on-surface/[0.06] active:bg-m3-on-surface/[0.1]'
+            ? 'bg-m3-surface-container-high ring-1 ring-m3-outline-variant/30 shadow-m3-1'
+            : 'bg-transparent hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15'
         } ${
           dropIndicator === 'above'
             ? 'border-t-2 border-m3-primary !rounded-t-none bg-m3-primary/5'
@@ -184,15 +224,9 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
         )}
 
         {/* Main Row: Checkbox, Title & Action Buttons */}
-        <div className="flex items-start gap-2.5 w-full">
+        <div className="flex items-start gap-2 w-full">
           {/* Checkbox */}
-          <div
-            className="pt-0.5 flex-shrink-0 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleTaskCompletion(task.id);
-            }}
-          >
+          <div className="h-5 flex items-center justify-center flex-shrink-0 -ml-1">
             <M3Checkbox
               checked={task.completed}
               onChange={() => toggleTaskCompletion(task.id)}
@@ -220,8 +254,8 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                 onDoubleClick={(e) => e.stopPropagation()}
                 onContextMenu={(e) => e.stopPropagation()}
                 rows={1}
-                className={`w-full bg-transparent text-sm leading-snug p-0 m-0 border-0 focus:outline-none focus:ring-0 resize-none transition-colors select-text cursor-text ${
-                  task.completed ? 'line-through text-m3-outline' : 'text-m3-on-surface'
+                className={`w-full bg-transparent text-sm leading-snug p-0 m-0 border-0 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none resize-none transition-colors select-text cursor-text ${
+                  task.completed ? 'line-through text-m3-on-surface-variant' : 'text-m3-on-surface'
                 }`}
               />
             ) : (
@@ -229,7 +263,7 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                 onClick={() => setShouldFocusTitle(true)}
                 className={`text-sm leading-snug transition-colors break-words ${
                   task.completed
-                    ? 'line-through text-m3-outline'
+                    ? 'line-through text-m3-on-surface-variant'
                     : 'text-m3-on-surface'
                 }`}
               >
@@ -257,7 +291,8 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                     }}
                     placeholder={t('taskCard.details') || 'Detalhes'}
                     rows={Math.max(1, localNotes.split('\n').length)}
-                    className="w-full bg-transparent text-xs text-m3-on-surface placeholder:text-m3-outline focus:outline-none resize-none leading-relaxed transition-colors select-text cursor-text"
+                    aria-label={t('taskCard.details') || 'Detalhes'}
+                    className="w-full bg-transparent text-xs text-m3-on-surface placeholder:text-m3-on-surface-variant/70 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none resize-none leading-relaxed transition-colors select-text cursor-text"
                   />
                 </div>
               ) : (
@@ -272,7 +307,7 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                       e.stopPropagation();
                       setIsAddingNotes(true);
                     }}
-                    className="inline-flex items-center gap-1.5 text-xs text-m3-outline hover:text-m3-on-surface py-0.5 transition-colors select-none group/details"
+                    className="inline-flex items-center gap-1.5 text-xs text-m3-on-surface-variant hover:text-m3-on-surface focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none py-0.5 transition-colors select-none group/details"
                   >
                     <span className="material-symbols-rounded text-[16px] text-m3-outline group-hover/details:text-m3-on-surface">
                       notes
@@ -282,16 +317,16 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                 </div>
               )
             ) : (
-              task.notes && (
+              getDisplayNotes(task.notes, task.time) ? (
                 <p className="text-xs text-m3-on-surface-variant/80 mt-0.5 break-words line-clamp-2">
-                  {task.notes}
+                  {getDisplayNotes(task.notes, task.time)}
                 </p>
-              )
+              ) : null
             )}
 
             {/* Completed At date line if completed */}
             {task.completed && (
-              <span className="text-[11px] text-m3-outline mt-0.5">
+              <span className="text-[0.6875rem] text-m3-on-surface-variant mt-0.5">
                 {formatCompletedAt(task.completedAt, task.updatedAt, locale)}
               </span>
             )}
@@ -304,11 +339,13 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
               type="button"
               onClick={handleMoreButtonClick}
               title={t('taskCard.taskOptions')}
-              className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 text-m3-on-surface-variant hover:text-m3-on-surface transition-all duration-150 focus:outline-none ${
-                isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              aria-label={t('taskCard.taskOptions')}
+              aria-haspopup="menu"
+              className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 text-m3-on-surface-variant hover:text-m3-on-surface transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:opacity-100 focus-visible:outline-none group-focus-within:opacity-100 ${
+                isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               }`}
             >
-              <span className="material-symbols-rounded text-[18px]">more_vert</span>
+              <span className="material-symbols-rounded text-[1.125rem]">more_vert</span>
             </button>
 
             {/* Star Favorite Button */}
@@ -316,23 +353,22 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
               type="button"
               onClick={handleStarClick}
               title={task.starred ? t('taskCard.unstarTask') : t('taskCard.starTask')}
-              className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 transition-all duration-150 focus:outline-none ${
+              aria-label={task.starred ? t('taskCard.unstarTask') : t('taskCard.starTask')}
+              aria-pressed={!!task.starred}
+              className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:opacity-100 focus-visible:outline-none group-focus-within:opacity-100 ${
                 task.starred
                   ? 'opacity-100'
                   : isExpanded
-                  ? 'opacity-0 group-hover:opacity-100'
-                  : 'opacity-0 group-hover:opacity-100'
+                  ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                  : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               }`}
             >
               <span
-                className={`material-symbols-rounded text-[18px] transition-all duration-150 ${
+                className={`material-symbols-rounded text-[1.125rem] transition-colors duration-150 ${
                   task.starred
-                    ? 'text-m3-star'
-                    : 'text-m3-outline/60 hover:text-m3-on-surface'
+                    ? 'text-m3-star filled'
+                    : 'text-m3-on-surface-variant hover:text-m3-on-surface'
                 }`}
-                style={{
-                  fontVariationSettings: task.starred ? "'FILL' 1" : "'FILL' 0",
-                }}
               >
                 star
               </span>
@@ -455,6 +491,7 @@ const TaskCardComponent: React.FC<TaskCardProps> = ({
                 <M3Checkbox
                   checked={subtask.completed}
                   onChange={() => toggleSubtaskCompletion(task.id, subtask.id)}
+                  size="sm"
                 />
                 <span
                   className={`truncate flex-1 ${

@@ -11,12 +11,15 @@ node_modules
 dist
 dist-electron
 out
+release
 .vite
 
-# Local env files
+# Local env files (NEVER commit real credentials — use .env.example as template)
 .env
 .env.local
 .env.*.local
+.env.*.bak
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -28,3 +31,20 @@ out
 *.njsproj
 *.sln
 *.sw?
+
+# Build / type info
+*.tsbuildinfo
+coverage/
+
+# Secrets, tokens & certificates — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+*.enc
+*.token
+*credentials*.json
+*service-account*.json
+oauth-tokens.json
+google-auth-tokens*
+secrets.json

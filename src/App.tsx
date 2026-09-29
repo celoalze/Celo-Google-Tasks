@@ -9,7 +9,7 @@ import { useTaskStore } from './store/useTaskStore';
 import { useThemeStore } from './store/useThemeStore';
 import { useI18nStore } from './store/useI18nStore';
 import { startNotificationScheduler, snoozeTask } from './core/notificationScheduler';
-import { createTaskbarBadgeDataUrl } from './core/badgeGenerator';
+import { createTaskbarBadgeDataUrl, createTrayBadgeIconDataUrl } from './core/badgeGenerator';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 export const App: React.FC = () => {
@@ -17,7 +17,7 @@ export const App: React.FC = () => {
   const initTheme = useThemeStore((state) => state.initTheme);
   const initI18n = useI18nStore((state) => state.initI18n);
   const t = useI18nStore((state) => state.t);
-  const tasks = useTaskStore((state) => state.tasks);
+  const pendingCount = useTaskStore((s) => s.tasks.filter((x) => !x.completed).length);
   const isLoading = useTaskStore((state) => state.isLoading);
   const isGoogleConnected = useTaskStore((state) => state.isGoogleConnected);
   const openEditTaskModal = useTaskStore((state) => state.openEditTaskModal);
@@ -63,20 +63,20 @@ export const App: React.FC = () => {
     };
   }, [isGoogleConnected, syncTasks]);
 
-  // Sync taskbar overlay notification badge on Windows/macOS with pending tasks (only when count actually changes)
+  // Sync taskbar & tray overlay notification badge on Windows/macOS with pending tasks
   useEffect(() => {
     if (!window.electronAPI?.setBadge) return;
 
-    const pendingCount = tasks.filter((t) => !t.completed).length;
     if (pendingCount === lastBadgeCountRef.current) return;
     lastBadgeCountRef.current = pendingCount;
 
     const badgeDataUrl = createTaskbarBadgeDataUrl(pendingCount);
+    const trayDataUrl = createTrayBadgeIconDataUrl(pendingCount);
 
-    window.electronAPI.setBadge(pendingCount, badgeDataUrl).catch((err) => {
+    window.electronAPI.setBadge(pendingCount, badgeDataUrl, trayDataUrl).catch((err) => {
       console.warn('Falha ao sincronizar badge da barra de tarefas:', err);
     });
-  }, [tasks]);
+  }, [pendingCount]);
 
   // Start background task reminder scheduler and listen for notification clicks and button actions
   useEffect(() => {
@@ -148,10 +148,14 @@ export const App: React.FC = () => {
       </ErrorBoundary>
 
       {/* Google Tasks Official Task Dialog */}
-      <TaskModal />
+      <ErrorBoundary>
+        <TaskModal />
+      </ErrorBoundary>
 
       {/* Google Credentials & Settings Modal */}
-      <SettingsModal />
+      <ErrorBoundary>
+        <SettingsModal />
+      </ErrorBoundary>
     </div>
   );
 };

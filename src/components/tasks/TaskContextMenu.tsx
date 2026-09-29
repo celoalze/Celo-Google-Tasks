@@ -29,13 +29,11 @@ export const TaskContextMenu: React.FC<TaskContextMenuProps> = ({
 
   const t = useI18nStore((state) => state.t);
 
-  const {
-    lists,
-    updateTask,
-    moveTaskToList,
-    deleteTask,
-    createList,
-  } = useTaskStore();
+  const lists = useTaskStore((s) => s.lists);
+  const updateTask = useTaskStore((s) => s.updateTask);
+  const moveTaskToList = useTaskStore((s) => s.moveTaskToList);
+  const deleteTask = useTaskStore((s) => s.deleteTask);
+  const createList = useTaskStore((s) => s.createList);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

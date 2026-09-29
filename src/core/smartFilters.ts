@@ -1,36 +1,65 @@
 import { Task, TaskList, TaskGroup, SmartFilterType } from '../contracts/tasks.types';
-import { isToday, isTomorrow, isOverdue } from './dateUtils';
+import { parseDueDate } from './dateUtils';
+
+function startOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setHours(0, 0, 0, 0);
+  return c;
+}
+
+function isSameDay(a: Date | null, b: Date): boolean {
+  return !!a && a.getTime() === b.getTime();
+}
 
 /**
  * Filter tasks according to the active smart list or real Google list ID.
+ * `now` injetável para testes determinísticos.
  */
 export function filterTasks(
   tasks: readonly Task[],
   activeFilter: SmartFilterType | string,
-  searchQuery: string = ''
+  searchQuery = '',
+  now: Date = new Date()
 ): readonly Task[] {
   let filtered = tasks;
 
-  // Search filter
-  if (searchQuery.trim().length > 0) {
-    const q = searchQuery.toLowerCase().trim();
+  // Search filter (lowercase uma vez)
+  const q = searchQuery.toLowerCase().trim();
+  if (q.length > 0) {
     filtered = filtered.filter(
       (t) =>
         t.title.toLowerCase().includes(q) ||
-        (t.notes && t.notes.toLowerCase().includes(q))
+        (t.notes ? t.notes.toLowerCase().includes(q) : false)
     );
   }
+
+  const today = startOfDay(now);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
   // List / Smart filter strictly using Google Tasks official fields
   switch (activeFilter) {
     case 'starred':
       return filtered.filter((t) => !t.completed && !!t.starred);
-    case 'today':
-      return filtered.filter((t) => !t.completed && isToday(t.due));
-    case 'tomorrow':
-      return filtered.filter((t) => !t.completed && isTomorrow(t.due));
-    case 'overdue':
-      return filtered.filter((t) => !t.completed && isOverdue(t.due));
+    case 'today': {
+      return filtered.filter((t) => {
+        if (t.completed) return false;
+        return isSameDay(parseDueDate(t.due), today);
+      });
+    }
+    case 'tomorrow': {
+      return filtered.filter((t) => {
+        if (t.completed) return false;
+        return isSameDay(parseDueDate(t.due), tomorrow);
+      });
+    }
+    case 'overdue': {
+      return filtered.filter((t) => {
+        if (t.completed || !t.due) return false;
+        const d = parseDueDate(t.due);
+        return !!d && d.getTime() < today.getTime();
+      });
+    }
     case 'all':
       return filtered.filter((t) => !t.completed);
     case 'completed':
@@ -91,10 +120,12 @@ export function groupTasksByList(
 
 /**
  * Calculates badge counts for official smart lists and real custom lists.
+ * Parse de due uma única vez por task (antes: 3x parse por task).
  */
 export function calculateCounts(
   tasks: readonly Task[],
-  lists: readonly TaskList[]
+  lists: readonly TaskList[],
+  now: Date = new Date()
 ): {
   smartCounts: Record<SmartFilterType, number>;
   listCounts: Record<string, number>;
@@ -113,6 +144,10 @@ export function calculateCounts(
     listCounts[l.id] = 0;
   });
 
+  const today = startOfDay(now);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
   tasks.forEach((t) => {
     if (t.completed) {
       smartCounts.completed += 1;
@@ -122,14 +157,11 @@ export function calculateCounts(
       if (t.starred) {
         smartCounts.starred += 1;
       }
-      if (isToday(t.due)) {
-        smartCounts.today += 1;
-      }
-      if (isTomorrow(t.due)) {
-        smartCounts.tomorrow += 1;
-      }
-      if (isOverdue(t.due)) {
-        smartCounts.overdue += 1;
+      const due = parseDueDate(t.due);
+      if (due) {
+        if (due.getTime() === today.getTime()) smartCounts.today += 1;
+        if (due.getTime() === tomorrow.getTime()) smartCounts.tomorrow += 1;
+        if (due.getTime() < today.getTime()) smartCounts.overdue += 1;
       }
       if (listCounts[t.listId] !== undefined) {
         listCounts[t.listId] += 1;

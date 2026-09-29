@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
+import { assetUrl } from '../../utils/assetUrl';
 import { useI18nStore } from '../../store/useI18nStore';
 import { useTaskStore } from '../../store/useTaskStore';
 
-export const TitleBar: React.FC = () => {
+export const TitleBar: React.FC = memo(() => {
   const [isMaximized, setIsMaximized] = useState(false);
   const t = useI18nStore((state) => state.t);
   const isGoogleConnected = useTaskStore((state) => state.isGoogleConnected);
@@ -35,9 +36,12 @@ export const TitleBar: React.FC = () => {
     <header className="h-8 w-full bg-m3-surface flex items-center justify-between select-none titlebar-drag-region z-50">
       {/* Left: Google Tasks Logo + Title */}
       <div className="flex items-center gap-2 cursor-default titlebar-no-drag pl-3">
-        <div className="w-4 h-4 rounded-full bg-m3-primary text-m3-on-primary flex items-center justify-center shadow-sm">
-          <span className="material-symbols-rounded text-[11px] font-bold">check</span>
-        </div>
+        <img
+          src={assetUrl('icon.png')}
+          alt="Google Tasks"
+          className="w-4 h-4 object-contain select-none pointer-events-none"
+          draggable={false}
+        />
         <span className="text-[12px] text-m3-on-surface-variant font-normal tracking-wide">
           {t('common.tasks')}
         </span>
@@ -54,7 +58,7 @@ export const TitleBar: React.FC = () => {
             type="button"
             disabled={isSyncing}
             onClick={() => syncTasks({ silent: false })}
-            className="h-full px-3 flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/20 transition-colors focus:outline-none disabled:opacity-50"
+            className="h-full px-3 flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none disabled:opacity-50"
             title={t('titlebar.sync')}
           >
             <span
@@ -71,7 +75,7 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={handleMinimize}
-          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/20 transition-colors focus:outline-none"
+          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
           title={t('titlebar.minimize')}
         >
           <span className="material-symbols-rounded text-[14px]">remove</span>
@@ -81,7 +85,7 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={handleMaximize}
-          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/20 transition-colors focus:outline-none"
+          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
           title={isMaximized ? t('titlebar.restore') : t('titlebar.maximize')}
         >
           <span className="material-symbols-rounded text-[12px]">
@@ -93,7 +97,7 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={handleClose}
-          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:text-white hover:bg-[#e81123] active:bg-[#f1707a] transition-colors focus:outline-none"
+          className="h-full w-[46px] flex items-center justify-center text-m3-on-surface-variant hover:bg-m3-error hover:text-m3-on-error active:bg-m3-error/80 transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
           title={t('titlebar.close')}
         >
           <span className="material-symbols-rounded text-[14px]">close</span>
@@ -101,4 +105,6 @@ export const TitleBar: React.FC = () => {
       </div>
     </header>
   );
-};
+});
+
+TitleBar.displayName = 'TitleBar';

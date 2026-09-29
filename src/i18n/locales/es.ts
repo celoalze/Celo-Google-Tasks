@@ -107,6 +107,8 @@ export const es: TranslationSchema = {
     chooseDate: 'Elegir una fecha',
     removeDate: 'Eliminar fecha',
     setDueDateTitle: 'Definir Fecha de Vencimiento',
+    addTime: 'Definir hora',
+    removeTime: 'Eliminar hora',
   },
   taskCard: {
     details: 'Detalles',

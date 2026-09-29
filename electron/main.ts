@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, Tray, Menu, nativeImage, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,23 @@ app.setName('Google Tasks');
 
 // Set Application User Model ID on Windows for native toast notifications
 if (process.platform === 'win32') {
-  app.setAppUserModelId(app.isPackaged ? 'com.google.tasks.desktop' : process.execPath);
+  const appId = 'com.google.tasks.desktop';
+  app.setAppUserModelId(appId);
+
+  // Ensure Start Menu shortcut exists so Windows Action Center never suppresses toast notifications
+  try {
+    const programsDir = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+    const shortcutPath = path.join(programsDir, 'Google Tasks.lnk');
+    if (!fs.existsSync(shortcutPath)) {
+      shell.writeShortcutLink(shortcutPath, 'create', {
+        target: process.execPath,
+        appUserModelId: appId,
+        description: 'Google Tasks Desktop',
+      });
+    }
+  } catch (err) {
+    console.warn('[Main] Aviso ao registrar atalho para notificações:', err);
+  }
 }
 
 // Single Instance Lock and Protocol Handler for Windows Toast Action Buttons
@@ -30,20 +46,44 @@ if (!gotTheLock) {
       win.show();
       win.focus();
     }
-    const urlArg = commandLine.find((arg) => arg.startsWith('googletasks://'));
+    const urlArg = commandLine.find((arg) => arg.startsWith('googletasks://') || arg.startsWith('tasks://'));
     if (urlArg) {
       handleProtocolUrl(urlArg);
     }
   });
 }
 
-// Register custom protocol for toast button activation
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient('googletasks', process.execPath, [path.resolve(process.argv[1])]);
+// Register custom protocols for toast button activation (ambos os schemes declarados no builder)
+for (const scheme of ['googletasks', 'tasks'] as const) {
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient(scheme);
   }
-} else {
-  app.setAsDefaultProtocolClient('googletasks');
+}
+
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:']);
+const MAX_BADGE_COUNT = 999;
+const MAX_DATA_URL_LENGTH = 200_000;
+const CLIENT_ID_PATTERN = /^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
+
+function isSafeExternalUrl(raw: string): boolean {
+  try {
+    const parsed = new URL(raw);
+    return ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeTaskId(taskId: string): string {
+  return taskId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 128);
+}
+
+function isValidClientIdFormat(clientId: string): boolean {
+  return CLIENT_ID_PATTERN.test((clientId || '').trim());
 }
 
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -58,7 +98,7 @@ process.env.VITE_PUBLIC = app.isPackaged
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-let lastBadge: { count: number; dataUrl?: string } | null = null;
+let lastBadge: { count: number; dataUrl?: string; trayDataUrl?: string } | null = null;
 
 const preloadCjs = path.join(__dirname, 'preload.cjs');
 const preloadDev = path.join(process.env.APP_ROOT, 'electron', 'preload.cjs');
@@ -72,34 +112,27 @@ function getIconPath(): string {
   return path.join(publicDir, 'icon.png');
 }
 
-function escapeXml(unsafe: string): string {
-  return unsafe.replace(/[<>&'"]/g, (c) => {
-    switch (c) {
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '&': return '&amp;';
-      case '\'': return '&apos;';
-      case '"': return '&quot;';
-      default: return c;
-    }
-  });
-}
 
 function handleProtocolUrl(rawUrl: string) {
   try {
     const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'googletasks:' && parsed.protocol !== 'tasks:') return;
     const action = parsed.hostname; // 'open' | 'snooze' | 'complete'
-    const taskId = parsed.searchParams.get('taskId') || '';
+    const allowedActions = new Set(['open', 'snooze', 'complete']);
+    const rawTaskId = parsed.searchParams.get('taskId') || '';
+    const taskId = sanitizeTaskId(rawTaskId);
 
     if (win) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
 
-      if (action === 'complete') {
+      if (action === 'complete' && taskId) {
         win.webContents.send('notification:action', { action: 'complete', taskId });
-      } else if (action === 'snooze') {
+      } else if (action === 'snooze' && taskId) {
         win.webContents.send('notification:action', { action: 'snooze', taskId });
+      } else if (allowedActions.has(action) || action === '') {
+        if (taskId) win.webContents.send('notification:clicked', taskId);
       } else {
         win.webContents.send('notification:clicked', taskId);
       }
@@ -109,74 +142,65 @@ function handleProtocolUrl(rawUrl: string) {
   }
 }
 
+function getNotificationIconPath(): string {
+  try {
+    const userDataDir = app.getPath('userData');
+    const targetIconPath = path.join(userDataDir, 'app-icon.png');
+    if (!fs.existsSync(targetIconPath)) {
+      const sourceIcon = getIconPath();
+      if (fs.existsSync(sourceIcon)) {
+        fs.writeFileSync(targetIconPath, fs.readFileSync(sourceIcon));
+      }
+    }
+    if (fs.existsSync(targetIconPath)) {
+      return targetIconPath;
+    }
+  } catch (err) {
+    console.warn('[Main] Falha ao preparar ícone de notificação:', err);
+  }
+  return getIconPath();
+}
+
 function showNativeNotification(options: { title: string; body: string; taskId?: string }) {
   if (!Notification.isSupported()) {
     console.warn('[Main] Notificações não são suportadas neste sistema');
     return { ok: false, error: 'Notificações não são suportadas neste sistema' };
   }
 
-  const iconPath = getIconPath();
-  const taskId = options.taskId || 'general';
+  const iconPath = getNotificationIconPath();
+  const title = String(options.title || 'Google Tasks').slice(0, 120);
+  const body = String(options.body || '').slice(0, 300);
+  const safeTaskId = options.taskId ? sanitizeTaskId(options.taskId) : undefined;
 
-  // On Windows, construct native Toast Generic XML with large app icon and "Adiar" / "Concluir" buttons
-  if (process.platform === 'win32') {
-    const titleXml = escapeXml(options.title || 'Google Tasks');
-    const bodyXml = escapeXml(options.body || '');
-    const xml = `
-<toast activationType="protocol" launch="googletasks://open?taskId=${encodeURIComponent(taskId)}">
-  <visual>
-    <binding template="ToastGeneric">
-      <text>${titleXml}</text>
-      ${bodyXml ? `<text>${bodyXml}</text>` : ''}
-      ${fs.existsSync(iconPath) ? `<image placement="appLogoOverride" hint-crop="circle" src="${iconPath}" />` : ''}
-    </binding>
-  </visual>
-  <actions>
-    <action content="Adiar" activationType="protocol" arguments="googletasks://snooze?taskId=${encodeURIComponent(taskId)}" />
-    <action content="Concluir" activationType="protocol" arguments="googletasks://complete?taskId=${encodeURIComponent(taskId)}" />
-  </actions>
-</toast>`.trim();
+  try {
+    const notif = new Notification({
+      title,
+      body,
+      icon: fs.existsSync(iconPath) ? iconPath : undefined,
+      silent: false,
+    });
 
-    try {
-      const notif = new Notification({ toastXml: xml });
-      notif.on('click', () => {
-        if (win) {
-          if (win.isMinimized()) win.restore();
-          win.show();
-          win.focus();
-          if (options.taskId) {
-            win.webContents.send('notification:clicked', options.taskId);
-          }
+    notif.on('click', () => {
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        if (safeTaskId && safeTaskId !== 'test-task') {
+          win.webContents.send('notification:clicked', safeTaskId);
         }
-      });
-      notif.show();
-      return { ok: true };
-    } catch (err) {
-      console.warn('[Main] Falha ao exibir toastXml, usando fallback:', err);
-    }
-  }
-
-  // Fallback for non-Windows or if toastXml fails
-  const fallbackNotif = new Notification({
-    title: options.title,
-    body: options.body,
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
-    silent: false,
-  });
-
-  fallbackNotif.on('click', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.show();
-      win.focus();
-      if (options.taskId) {
-        win.webContents.send('notification:clicked', options.taskId);
       }
-    }
-  });
+    });
 
-  fallbackNotif.show();
-  return { ok: true };
+    notif.on('failed', (_event, error) => {
+      console.warn('[Main] Notificação nativa falhou:', error);
+    });
+
+    notif.show();
+    return { ok: true };
+  } catch (err: any) {
+    console.warn('[Main] Erro ao instanciar notificação nativa:', err);
+    return { ok: false, error: err?.message || String(err) };
+  }
 }
 
 function createTray() {
@@ -184,7 +208,7 @@ function createTray() {
   if (!fs.existsSync(trayIconPath)) return;
 
   tray = new Tray(trayIconPath);
-  tray.setToolTip('Google Tasks Desktop');
+  tray.setToolTip('Google Tasks');
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -197,6 +221,23 @@ function createTray() {
         }
       },
     },
+    {
+      label: 'Minimizar para Barra de Tarefas',
+      click: () => {
+        if (win) {
+          win.minimize();
+        }
+      },
+    },
+    {
+      label: 'Ocultar na Bandeja',
+      click: () => {
+        if (win) {
+          win.hide();
+        }
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Testar Notificação',
       click: () => {
@@ -218,6 +259,20 @@ function createTray() {
   ]);
 
   tray.setContextMenu(contextMenu);
+
+  // Single-click on tray icon toggles or shows the window
+  tray.on('click', () => {
+    if (win) {
+      if (win.isVisible() && !win.isMinimized() && win.isFocused()) {
+        win.minimize();
+      } else {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+      }
+    }
+  });
+
   tray.on('double-click', () => {
     if (win) {
       if (win.isMinimized()) win.restore();
@@ -227,13 +282,14 @@ function createTray() {
   });
 }
 
-function applyTaskbarBadge(count: number, dataUrl?: string) {
-  lastBadge = { count, dataUrl };
+function applyTaskbarBadge(count: number, dataUrl?: string, trayDataUrl?: string) {
+  lastBadge = { count, dataUrl, trayDataUrl };
 
   if (process.platform === 'darwin') {
     app.setBadgeCount(count);
   }
 
+  // 1. Windows Taskbar Overlay Icon (Pinned / Running app on Taskbar)
   if (process.platform === 'win32' && win) {
     if (count <= 0 || !dataUrl) {
       win.setOverlayIcon(null, '');
@@ -244,6 +300,25 @@ function applyTaskbarBadge(count: number, dataUrl?: string) {
       } catch (err) {
         console.warn('[Main] Falha ao definir overlayIcon na barra de tarefas:', err);
       }
+    }
+  }
+
+  // 2. Windows System Tray Icon & Tooltip
+  if (tray) {
+    try {
+      if (count <= 0) {
+        tray.setToolTip('Google Tasks');
+        const defaultIcon = nativeImage.createFromPath(getIconPath());
+        tray.setImage(defaultIcon);
+      } else {
+        tray.setToolTip(`Google Tasks - ${count} tarefas pendentes`);
+        if (trayDataUrl) {
+          const trayImg = nativeImage.createFromDataURL(trayDataUrl);
+          tray.setImage(trayImg);
+        }
+      }
+    } catch (err) {
+      console.warn('[Main] Falha ao atualizar ícone da bandeja:', err);
     }
   }
 }
@@ -264,6 +339,9 @@ function createWindow() {
       preload,
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      backgroundThrottling: false, // Ensures timers & badge syncing never pause when unfocused/minimized
     },
   });
 
@@ -276,27 +354,81 @@ function createWindow() {
   win.once('ready-to-show', () => {
     win?.show();
     if (lastBadge) {
-      applyTaskbarBadge(lastBadge.count, lastBadge.dataUrl);
+      applyTaskbarBadge(lastBadge.count, lastBadge.dataUrl, lastBadge.trayDataUrl);
     }
   });
 
   win.on('show', () => {
     if (lastBadge) {
-      applyTaskbarBadge(lastBadge.count, lastBadge.dataUrl);
+      applyTaskbarBadge(lastBadge.count, lastBadge.dataUrl, lastBadge.trayDataUrl);
     }
   });
 
-  // Keep app running in tray when user closes the window, like Microsoft To Do
+  // Re-apply taskbar overlay icon on all window state transitions so Windows Explorer never drops it
+  win.on('blur', () => {
+    if (lastBadge && lastBadge.count > 0 && lastBadge.dataUrl) {
+      setTimeout(() => {
+        if (win && lastBadge && lastBadge.dataUrl) {
+          try {
+            const img = nativeImage.createFromDataURL(lastBadge.dataUrl);
+            win.setOverlayIcon(img, `${lastBadge.count} tarefas pendentes`);
+          } catch {}
+        }
+      }, 50);
+    }
+  });
+
+  win.on('focus', () => {
+    if (lastBadge && lastBadge.count > 0 && lastBadge.dataUrl) {
+      setTimeout(() => {
+        if (win && lastBadge && lastBadge.dataUrl) {
+          try {
+            const img = nativeImage.createFromDataURL(lastBadge.dataUrl);
+            win.setOverlayIcon(img, `${lastBadge.count} tarefas pendentes`);
+          } catch {}
+        }
+      }, 50);
+    }
+  });
+
+  win.on('minimize', () => {
+    if (lastBadge && lastBadge.count > 0 && lastBadge.dataUrl) {
+      setTimeout(() => {
+        if (win && lastBadge && lastBadge.dataUrl) {
+          try {
+            const img = nativeImage.createFromDataURL(lastBadge.dataUrl);
+            win.setOverlayIcon(img, `${lastBadge.count} tarefas pendentes`);
+          } catch {}
+        }
+      }, 150);
+    }
+  });
+
+  win.on('restore', () => {
+    if (lastBadge && lastBadge.count > 0 && lastBadge.dataUrl) {
+      setTimeout(() => {
+        if (win && lastBadge && lastBadge.dataUrl) {
+          try {
+            const img = nativeImage.createFromDataURL(lastBadge.dataUrl);
+            win.setOverlayIcon(img, `${lastBadge.count} tarefas pendentes`);
+          } catch {}
+        }
+      }, 150);
+    }
+  });
+
+  // When user closes the window: minimize to taskbar so taskbar button & badge remain visible!
   win.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
-      win?.hide();
+      win?.minimize();
     }
   });
 
-  // Open external links in user's default browser
+  // Open external links in user's default browser (allowlist https only)
   win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-    shell.openExternal(targetUrl);
+    if (!isSafeExternalUrl(targetUrl)) return { action: 'deny' };
+    void shell.openExternal(targetUrl);
     return { action: 'deny' };
   });
 }
@@ -323,6 +455,9 @@ ipcMain.handle('window-is-maximized', () => {
 });
 
 ipcMain.handle('open-external', async (_event, targetUrl: string) => {
+  if (typeof targetUrl !== 'string' || !isSafeExternalUrl(targetUrl)) {
+    throw new Error('URL externa bloqueada (apenas https permitido).');
+  }
   await shell.openExternal(targetUrl);
 });
 
@@ -336,15 +471,18 @@ ipcMain.handle(
 
 ipcMain.handle('notification:test', async () => {
   return showNativeNotification({
-    title: 'test',
-    body: 'Lembrete de tarefa com botões de contexto',
+    title: 'Google Tasks Desktop',
+    body: '🔔 Notificações ativas! Você receberá lembretes das suas tarefas.',
     taskId: 'test-task',
   });
 });
 
-// Windows Taskbar & System Overlay Badge IPC
-ipcMain.handle('app:set-badge', async (_event, count: number, dataUrl?: string) => {
-  applyTaskbarBadge(count, dataUrl);
+// Windows Taskbar & System Overlay Badge IPC (com clamp anti-DoS)
+ipcMain.handle('app:set-badge', async (_event, count: number, dataUrl?: string, trayDataUrl?: string) => {
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.min(MAX_BADGE_COUNT, Math.floor(count))) : 0;
+  const safeDataUrl = typeof dataUrl === 'string' && dataUrl.length <= MAX_DATA_URL_LENGTH ? dataUrl : undefined;
+  const safeTrayUrl = typeof trayDataUrl === 'string' && trayDataUrl.length <= MAX_DATA_URL_LENGTH ? trayDataUrl : undefined;
+  applyTaskbarBadge(safeCount, safeDataUrl, safeTrayUrl);
   return { ok: true };
 });
 
@@ -381,8 +519,10 @@ ipcMain.handle('app:set-auto-launch', async (_event, enabled: boolean) => {
 ipcMain.handle(
   'auth:google-login',
   async (_event, clientId: string, clientSecret?: string) => {
-    console.log('[Main] auth:google-login chamado com:', clientId);
-    return await startOAuthLoopback(clientId, clientSecret);
+    if (!isValidClientIdFormat(clientId)) {
+      return { ok: false, error: 'Client ID inválido.' };
+    }
+    return await startOAuthLoopback(clientId.trim(), clientSecret);
   }
 );
 
@@ -393,14 +533,17 @@ ipcMain.handle('auth:get-session', async () => {
   }
 
   // Check if access token is expired or close to expiring (within 2 minutes)
+  let active = tokens;
   if (Date.now() > tokens.expiresAt - 120000 && tokens.refreshToken) {
     const refreshed = await refreshAccessToken(tokens);
-    if (refreshed) {
-      return { ok: true, data: refreshed };
-    }
+    if (refreshed) active = refreshed;
   }
 
-  return { ok: true, data: tokens };
+  // Expõe apenas accessToken de curta duração ao renderer — nunca refreshToken/secret.
+  return {
+    ok: true,
+    data: { accessToken: active.accessToken, expiresAt: active.expiresAt, clientId: active.clientId },
+  };
 });
 
 ipcMain.handle('auth:logout', async () => {
@@ -427,10 +570,16 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    // Nega geolocalização, mídia, etc. por padrão — app de tarefas não precisa.
+    if (permission === 'notifications') callback(true);
+    else callback(false);
+  });
+
   createWindow();
   createTray();
 
-  const initialUrl = process.argv.find((arg) => arg.startsWith('googletasks://'));
+  const initialUrl = process.argv.find((arg) => arg.startsWith('googletasks://') || arg.startsWith('tasks://'));
   if (initialUrl && win) {
     win.webContents.once('did-finish-load', () => {
       handleProtocolUrl(initialUrl);

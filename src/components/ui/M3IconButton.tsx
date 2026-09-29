@@ -37,7 +37,8 @@ export const M3IconButton: React.FC<M3IconButtonProps> = ({
       disabled={disabled}
       onClick={onClick}
       title={title}
-      className={`inline-flex items-center justify-center rounded-full flex-shrink-0 transition-colors duration-150 hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 focus:outline-none select-none disabled:opacity-40 disabled:cursor-not-allowed ${btn} ${
+      aria-label={title}
+      className={`inline-flex items-center justify-center rounded-full flex-shrink-0 transition-colors duration-150 hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none select-none disabled:opacity-40 disabled:cursor-not-allowed ${btn} ${
         active ? 'text-m3-primary' : colorClass
       } ${className}`}
       {...rest}

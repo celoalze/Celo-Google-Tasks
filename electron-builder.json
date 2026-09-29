@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.celo.googletasks",
+  "productName": "Google Tasks",
+  "copyright": "Copyright © 2026 Celo Zaga",
+  "asar": true,
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
+  "protocols": [
+    {
+      "name": "Google Tasks Protocol",
+      "schemes": ["googletasks", "tasks"]
+    }
+  ],
+  "publish": {
+    "provider": "github",
+    "owner": "celoalze",
+    "repo": "Celo-Google-Tasks"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "build/icon.ico"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": false,
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "Google Tasks",
+    "artifactName": "${productName} Setup ${version}.${ext}"
+  },
+  "portable": {
+    "artifactName": "${productName} ${version} Portable.${ext}"
+  }
+}

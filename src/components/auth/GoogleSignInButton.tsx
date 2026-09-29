@@ -14,7 +14,8 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   onError,
   className = '',
 }) => {
-  const { connectGoogle, setIsSettingsOpen } = useTaskStore();
+  const connectGoogle = useTaskStore((s) => s.connectGoogle);
+  const setIsSettingsOpen = useTaskStore((s) => s.setIsSettingsOpen);
   const t = useI18nStore((state) => state.t);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -45,10 +46,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       type="button"
       onClick={handleSignIn}
       disabled={isLoading}
-      className={`flex items-center justify-center gap-3 bg-white hover:bg-neutral-100 text-neutral-800 font-medium text-sm px-5 py-2.5 rounded-full shadow-sm transition-all duration-150 active:scale-[0.98] disabled:opacity-60 select-none cursor-pointer ${className}`}
+      className={`flex items-center justify-center gap-3 bg-m3-surface-container-highest hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 text-m3-on-surface font-medium text-sm px-5 py-2.5 rounded-full shadow-m3-1 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none active:scale-[0.98] disabled:opacity-60 select-none cursor-pointer ${className}`}
     >
       {isLoading ? (
-        <span className="material-symbols-rounded text-[20px] text-neutral-600 animate-spin">
+        <span className="material-symbols-rounded text-[1.25rem] text-m3-primary animate-spin" aria-hidden>
           progress_activity
         </span>
       ) : (

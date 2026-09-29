@@ -1,22 +1,18 @@
 import React from 'react';
+import { assetUrl } from '../../utils/assetUrl';
 
 export const AllListsHiddenIllustration: React.FC<{ className?: string }> = ({
   className = 'w-32 h-32',
 }) => {
-  const localSrc = '/tasks/all-task-lists-hidden-dark.svg';
-  const remoteFallback = 'https://www.gstatic.com/tasks/all-task-lists-hidden-dark.svg';
+  const src = assetUrl('tasks/all-task-lists-hidden-dark.svg');
 
   return (
     <div className={`relative flex items-center justify-center select-none ${className}`}>
       <img
-        src={localSrc}
+        src={src}
         alt="Nenhuma lista selecionada"
         className="w-full h-full object-contain pointer-events-none"
-        onError={(e) => {
-          if (e.currentTarget.src !== remoteFallback) {
-            e.currentTarget.src = remoteFallback;
-          }
-        }}
+        draggable={false}
       />
     </div>
   );

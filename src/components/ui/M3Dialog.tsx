@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { M3IconButton } from './M3IconButton';
 
 export interface M3DialogProps {
@@ -22,14 +22,42 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
   maxWidth = 'max-w-[340px]',
   showCloseButton = false,
 }) => {
+  const titleId = useId();
+  const descId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const prevFocus = useRef<Element | null>(null);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
       }
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     if (isOpen) {
+      prevFocus.current = document.activeElement;
       document.addEventListener('keydown', handleKeyDown);
+      // Autofocus no dialog
+      const t = setTimeout(() => dialogRef.current?.focus(), 0);
+      return () => {
+        clearTimeout(t);
+        document.removeEventListener('keydown', handleKeyDown);
+        (prevFocus.current as HTMLElement | null)?.focus?.();
+      };
     }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
@@ -40,20 +68,24 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-[1px] animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 bg-m3-scrim/60 z-50 flex items-center justify-center p-4 backdrop-blur-[1px] animate-in fade-in duration-150 select-none"
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        aria-describedby={description ? descId : undefined}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className={`bg-m3-surface-container-high rounded-[28px] w-full ${maxWidth} p-6 shadow-2xl animate-in zoom-in-95 duration-150 relative text-m3-on-surface`}
+        className={`bg-m3-surface-container-high rounded-m3-3xl w-full ${maxWidth} p-6 shadow-m3-3 animate-in zoom-in-95 duration-150 relative text-m3-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-m3-primary`}
       >
         {/* Header */}
         {(title || showCloseButton) && (
           <div className="flex items-center justify-between mb-4">
             {title && (
-              <h3 className="text-base font-medium text-m3-on-surface tracking-tight">
+              <h3 id={titleId} className="text-base font-medium text-m3-on-surface tracking-tight">
                 {title}
               </h3>
             )}
@@ -71,7 +103,7 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
 
         {/* Description */}
         {description && (
-          <p className="text-xs text-m3-outline leading-relaxed mb-6">
+          <p id={descId} className="text-xs text-m3-on-surface-variant leading-relaxed mb-6">
             {description}
           </p>
         )}

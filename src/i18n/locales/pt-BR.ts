@@ -107,6 +107,8 @@ export const ptBR: TranslationSchema = {
     chooseDate: 'Escolher uma data',
     removeDate: 'Remover data',
     setDueDateTitle: 'Definir Data de Vencimento',
+    addTime: 'Definir horário',
+    removeTime: 'Remover horário',
   },
   taskCard: {
     details: 'Detalhes',

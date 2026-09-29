@@ -1,9 +1,58 @@
 import { ITasksService } from './ITasksService';
 import { Result, success, failure } from '../contracts/api.types';
-import { Task, TaskList, UserProfile } from '../contracts/tasks.types';
+import { Task, TaskAssignmentInfo, TaskLink, TaskList, UserProfile } from '../contracts/tasks.types';
+import { toGoogleDueIso } from '../core/dateUtils';
 
 export interface GoogleApiConfig {
   accessToken: string;
+}
+
+interface GoogleTaskRawItem {
+  id: string;
+  title?: string;
+  notes?: string;
+  status: 'needsAction' | 'completed';
+  due?: string;
+  parent?: string;
+  completed?: string;
+  updated?: string;
+  position?: string;
+  links?: Array<{ type: string; description?: string; link: string }>;
+  assignmentInfo?: TaskAssignmentInfo;
+  webViewLink?: string;
+}
+
+interface GoogleTaskResponse {
+  id: string;
+  title?: string;
+  notes?: string;
+  status: 'needsAction' | 'completed';
+  due?: string;
+  completed?: string;
+  updated?: string;
+  position?: string;
+  links?: TaskLink[];
+  assignmentInfo?: TaskAssignmentInfo;
+  webViewLink?: string;
+}
+
+interface GoogleTaskPatchBody {
+  title?: string;
+  notes?: string;
+  due?: string | null;
+  status?: 'needsAction' | 'completed';
+  completed?: string | null;
+}
+
+function normalizeDueForGoogle(due?: string): string | undefined {
+  if (!due) return undefined;
+  const datePart = due.split('T')[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return undefined;
+  try {
+    return toGoogleDueIso(datePart);
+  } catch {
+    return undefined;
+  }
 }
 
 export class GoogleTasksService implements ITasksService {
@@ -13,6 +62,12 @@ export class GoogleTasksService implements ITasksService {
   private taskToListMap = new Map<string, string>();
 
   private inFlightTasksPromise: Promise<Result<Task[]>> | null = null;
+
+  private pruneListEntries(listId: string): void {
+    for (const [taskId, mappedListId] of this.taskToListMap) {
+      if (mappedListId === listId) this.taskToListMap.delete(taskId);
+    }
+  }
 
   constructor(config: GoogleApiConfig) {
     this.config = config;
@@ -98,7 +153,7 @@ export class GoogleTasksService implements ITasksService {
         headers: { Authorization: `Bearer ${this.config.accessToken}` },
       });
       if (res.ok) {
-        const info = await res.json();
+        const info = (await res.json()) as { name?: string; email?: string; picture?: string };
         return success({
           displayName: info.name || 'Usuário Google',
           email: info.email || '',
@@ -111,10 +166,10 @@ export class GoogleTasksService implements ITasksService {
     }
 
     return success({
-      displayName: 'Conta Google Conectada',
-      email: '',
+      displayName: 'Conectar ao Google',
+      email: 'Sessão expirada — reconecte',
       photoUrl: '',
-      isAuthenticated: true,
+      isAuthenticated: false,
     });
   }
 
@@ -183,15 +238,18 @@ export class GoogleTasksService implements ITasksService {
   }
 
   async deleteList(listId: string): Promise<Result<void>> {
-    return this.request<void>(`/users/@me/lists/${listId}`, {
+    const res = await this.request<void>(`/users/@me/lists/${listId}`, {
       method: 'DELETE',
     });
+    if (res.ok) this.pruneListEntries(listId);
+    return res;
   }
 
   async clearCompletedTasks(listId: string): Promise<Result<void>> {
-    return this.request<void>(`/lists/${listId}/clear`, {
+    const res = await this.request<void>(`/lists/${listId}/clear`, {
       method: 'POST',
     });
+    return res;
   }
 
   async getTasks(): Promise<Result<Task[]>> {
@@ -204,20 +262,6 @@ export class GoogleTasksService implements ITasksService {
         const listsRes = await this.getLists();
         if (!listsRes.ok) return listsRes;
 
-        interface GoogleTaskRawItem {
-          id: string;
-          title?: string;
-          notes?: string;
-          status: 'needsAction' | 'completed';
-          due?: string;
-          parent?: string;
-          completed?: string;
-          updated?: string;
-          position?: string;
-          links?: Array<{ type: string; description?: string; link: string }>;
-          assignmentInfo?: any;
-          webViewLink?: string;
-        }
         interface GoogleTasksResponse {
           items?: GoogleTaskRawItem[];
           nextPageToken?: string;
@@ -335,7 +379,8 @@ export class GoogleTasksService implements ITasksService {
       title: params.title,
     };
     if (params.notes) payload.notes = params.notes;
-    if (params.due) payload.due = params.due;
+    const normalizedDue = normalizeDueForGoogle(params.due);
+    if (normalizedDue) payload.due = normalizedDue;
 
     const res = await this.request<GoogleTaskResponse>(`/lists/${params.listId}/tasks`, {
       method: 'POST',
@@ -370,19 +415,11 @@ export class GoogleTasksService implements ITasksService {
     }
     this.taskToListMap.set(taskId, resolvedListId);
 
-    interface GoogleTaskPatchBody {
-      title?: string;
-      notes?: string;
-      due?: string | null;
-      status?: 'needsAction' | 'completed';
-      completed?: string | null;
-    }
-
     const patchBody: GoogleTaskPatchBody = {};
     if (updates.title !== undefined) patchBody.title = updates.title;
     if (updates.notes !== undefined) patchBody.notes = updates.notes;
     if (updates.due !== undefined) {
-      patchBody.due = updates.due || null;
+      patchBody.due = updates.due ? normalizeDueForGoogle(updates.due) || null : null;
     }
     if (updates.completed !== undefined) {
       patchBody.status = updates.completed ? 'completed' : 'needsAction';
@@ -391,7 +428,7 @@ export class GoogleTasksService implements ITasksService {
       }
     }
 
-    const res = await this.request<any>(`/lists/${resolvedListId}/tasks/${taskId}`, {
+    const res = await this.request<GoogleTaskResponse>(`/lists/${resolvedListId}/tasks/${taskId}`, {
       method: 'PATCH',
       body: JSON.stringify(patchBody),
     });
@@ -401,12 +438,12 @@ export class GoogleTasksService implements ITasksService {
     return success({
       id: taskId,
       listId: resolvedListId,
-      title: res.data?.title || updates.title || '',
-      notes: res.data?.notes || updates.notes || '',
-      completed: res.data?.status === 'completed',
-      due: res.data?.due || updates.due,
+      title: res.data.title || updates.title || '',
+      notes: res.data.notes || updates.notes || '',
+      completed: res.data.status === 'completed',
+      due: res.data.due ?? updates.due,
       subtasks: [],
-      updatedAt: res.data?.updated,
+      updatedAt: res.data.updated,
     });
   }
 
@@ -419,8 +456,8 @@ export class GoogleTasksService implements ITasksService {
       return failure('A tarefa já está nessa lista');
     }
 
-    // 1. Fetch current task details
-    const currentRes = await this.request<any>(`/lists/${sourceListId}/tasks/${taskId}`);
+    // 1. Fetch current task details + subtasks (flat list filtrada por parent)
+    const currentRes = await this.request<GoogleTaskRawItem>(`/lists/${sourceListId}/tasks/${taskId}`);
     if (!currentRes.ok) return currentRes;
 
     const sourceData = currentRes.data;
@@ -436,13 +473,41 @@ export class GoogleTasksService implements ITasksService {
 
     const newTask = createRes.data;
 
-    // If task was completed, update status
-    if (sourceData.status === 'completed') {
-      await this.updateTask(newTask.id, { completed: true });
+    // Migra subtarefas: recria cada filha sob o novo pai para não deixar órfãs na origem
+    const listTasksRes = await this.request<{ items?: GoogleTaskRawItem[] }>(
+      `/lists/${sourceListId}/tasks?showCompleted=true&showHidden=true&maxResults=100`
+    );
+    if (listTasksRes.ok && listTasksRes.data.items) {
+      const children = listTasksRes.data.items.filter((item) => item.parent === taskId);
+      for (const child of children) {
+        const subRes = await this.request<GoogleTaskResponse>(
+          `/lists/${targetListId}/tasks?parent=${encodeURIComponent(newTask.id)}`,
+          { method: 'POST', body: JSON.stringify({ title: child.title || '', notes: child.notes }) }
+        );
+        if (subRes.ok) {
+          this.taskToListMap.set(subRes.data.id, targetListId);
+          if (child.status === 'completed') {
+            await this.updateTask(subRes.data.id, { completed: true }, targetListId);
+          }
+        }
+      }
     }
 
-    // 3. Delete from old list
-    await this.deleteTask(taskId);
+    // If task was completed, update status (com checagem de erro)
+    if (sourceData.status === 'completed') {
+      const completedRes = await this.updateTask(newTask.id, { completed: true });
+      if (!completedRes.ok) {
+        await this.deleteTask(newTask.id, targetListId);
+        return failure(`Falha ao preservar conclusão no move: ${completedRes.error}`);
+      }
+    }
+
+    // 3. Delete from old list (com rollback se falhar para evitar duplicata)
+    const deleteRes = await this.deleteTask(taskId);
+    if (!deleteRes.ok) {
+      await this.deleteTask(newTask.id, targetListId);
+      return failure(`Falha ao remover origem no move: ${deleteRes.error}`);
+    }
 
     return success(newTask);
   }
@@ -492,7 +557,7 @@ export class GoogleTasksService implements ITasksService {
       ? { status: 'completed' }
       : { status: 'needsAction', completed: null };
 
-    const patchRes = await this.request<any>(`/lists/${resolvedListId}/tasks/${taskId}`, {
+    const patchRes = await this.request<GoogleTaskResponse>(`/lists/${resolvedListId}/tasks/${taskId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
@@ -501,7 +566,7 @@ export class GoogleTasksService implements ITasksService {
     return success({
       id: taskId,
       listId: resolvedListId,
-      title: patchRes.data?.title || '',
+      title: patchRes.data.title || '',
       completed: isCompleted,
       completedAt: isCompleted ? new Date().toISOString() : undefined,
       subtasks: [],
@@ -590,9 +655,10 @@ export class GoogleTasksService implements ITasksService {
     const listId = this.taskToListMap.get(subtaskId) || this.taskToListMap.get(taskId);
     if (!listId) return failure('Lista não encontrada');
 
-    await this.request<void>(`/lists/${listId}/tasks/${subtaskId}`, {
+    const res = await this.request<void>(`/lists/${listId}/tasks/${subtaskId}`, {
       method: 'DELETE',
     });
+    if (!res.ok) return res;
 
     this.taskToListMap.delete(subtaskId);
 
@@ -617,7 +683,7 @@ export class GoogleTasksService implements ITasksService {
     if (options.destinationTasklist) params.append('destinationTasklist', options.destinationTasklist);
     const query = params.toString() ? `?${params.toString()}` : '';
 
-    const res = await this.request<any>(`/lists/${resolvedListId}/tasks/${taskId}/move${query}`, {
+    const res = await this.request<GoogleTaskResponse>(`/lists/${resolvedListId}/tasks/${taskId}/move${query}`, {
       method: 'POST',
     });
     if (!res.ok) {

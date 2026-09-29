@@ -2,65 +2,63 @@ export type ThemeMode = 'dark' | 'light' | 'system';
 
 export type FontSizeLevel = 'small' | 'normal' | 'large';
 
-export type FontScale = 'sm' | 'md' | 'lg' | 'xl';
-
-export interface ThemePreferencesState {
-  themeMode: ThemeMode;
-  effectiveTheme: 'dark' | 'light';
-  fontSizeLevel: FontSizeLevel;
-  setThemeMode: (mode: ThemeMode) => void;
-  setFontSizeLevel: (level: FontSizeLevel) => void;
-  initTheme: () => void;
+export interface ThemePreferences {
+  readonly themeMode: ThemeMode;
+  readonly effectiveTheme: 'dark' | 'light';
+  readonly fontSizeLevel: FontSizeLevel;
 }
 
 export interface ThemeColors {
   // Surfaces
-  surface: string;
-  surfaceDim: string;
-  surfaceBright: string;
-  surfaceContainerLowest: string;
-  surfaceContainerLow: string;
-  surfaceContainer: string;
-  surfaceContainerHigh: string;
-  surfaceContainerHighest: string;
+  readonly surface: string;
+  readonly surfaceDim: string;
+  readonly surfaceBright: string;
+  readonly surfaceContainerLowest: string;
+  readonly surfaceContainerLow: string;
+  readonly surfaceContainer: string;
+  readonly surfaceContainerHigh: string;
+  readonly surfaceContainerHighest: string;
 
   // Content / On-surface
-  onSurface: string;
-  onSurfaceVariant: string;
-  outline: string;
-  outlineVariant: string;
+  readonly onSurface: string;
+  readonly onSurfaceVariant: string;
+  readonly outline: string;
+  readonly outlineVariant: string;
 
   // Primary
-  primary: string;
-  onPrimary: string;
-  primaryContainer: string;
-  onPrimaryContainer: string;
+  readonly primary: string;
+  readonly onPrimary: string;
+  readonly primaryContainer: string;
+  readonly onPrimaryContainer: string;
 
   // Secondary
-  secondary: string;
-  onSecondary: string;
-  secondaryContainer: string;
-  onSecondaryContainer: string;
+  readonly secondary: string;
+  readonly onSecondary: string;
+  readonly secondaryContainer: string;
+  readonly onSecondaryContainer: string;
 
   // Tertiary
-  tertiary: string;
-  onTertiary: string;
-  tertiaryContainer: string;
-  onTertiaryContainer: string;
+  readonly tertiary: string;
+  readonly onTertiary: string;
+  readonly tertiaryContainer: string;
+  readonly onTertiaryContainer: string;
 
   // Feedback & Status
-  error: string;
-  onError: string;
-  errorContainer: string;
-  onErrorContainer: string;
+  readonly error: string;
+  readonly onError: string;
+  readonly errorContainer: string;
+  readonly onErrorContainer: string;
 
   // App & Semantic Accents
-  star: string;
-  success: string;
-  overdue: string;
-  important: string;
+  readonly star: string;
+  readonly success: string;
+  readonly overdue: string;
+  readonly important: string;
+  readonly inverseSurface: string;
+  readonly inverseOnSurface: string;
+  readonly scrim: string;
 }
 
 export interface ThemeRgbValues {
-  [key: string]: string; // "R G B" format for CSS variable opacity composition
+  readonly [key: string]: string; // "R G B" format for CSS variable opacity composition
 }

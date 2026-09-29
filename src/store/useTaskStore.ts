@@ -3,6 +3,7 @@ import { Task, TaskList, UserProfile, SmartFilterType } from '../contracts/tasks
 import { ITasksService } from '../services/ITasksService';
 import { MockTasksService } from '../services/MockTasksService';
 import { GoogleTasksService } from '../services/GoogleTasksService';
+import { extractTimeFromText, syncTimeToNotes } from '../core/dateUtils';
 
 export type SortOption = 'my_order' | 'date' | 'deadline' | 'starred' | 'title';
 
@@ -53,6 +54,7 @@ interface TaskState {
     listId: string;
     title: string;
     due?: string;
+    time?: string;
     notes?: string;
   }) => Promise<void>;
 
@@ -101,6 +103,21 @@ function saveStoredStarred(ids: Set<string>) {
   } catch {}
 }
 
+function getStoredTimes(): Record<string, string> {
+  try {
+    const val = localStorage.getItem('google_tasks_times');
+    return val ? JSON.parse(val) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredTimes(times: Record<string, string>) {
+  try {
+    localStorage.setItem('google_tasks_times', JSON.stringify(times));
+  } catch {}
+}
+
 function getStoredVisibleLists(): string[] | null {
   try {
     const val = localStorage.getItem('google_tasks_visible_lists');
@@ -145,6 +162,15 @@ function applyListOrder(lists: TaskList[], order: string[] | null): TaskList[] {
 
 let currentService: ITasksService = new MockTasksService();
 
+export function createTasksService(accessToken?: string): ITasksService {
+  if (accessToken) return new GoogleTasksService({ accessToken });
+  return new MockTasksService();
+}
+
+export function setTasksService(service: ITasksService): void {
+  currentService = service;
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   lists: [],
@@ -178,14 +204,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const session = await window.electronAPI?.getGoogleSession();
       if (session?.ok && session.data?.accessToken) {
-        currentService = new GoogleTasksService({ accessToken: session.data.accessToken });
+        currentService = createTasksService(session.data.accessToken);
         set({ isGoogleConnected: true });
       } else {
-        currentService = new MockTasksService();
+        currentService = createTasksService();
         set({ isGoogleConnected: false });
       }
     } catch {
-      currentService = new MockTasksService();
+      currentService = createTasksService();
       set({ isGoogleConnected: false });
     }
 
@@ -223,17 +249,37 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         currentService.getUserProfile(),
       ]);
 
-      if (!listsRes.ok && !tasksRes.ok) {
+      if (!listsRes.ok || !tasksRes.ok) {
         set({ isSyncing: false, isLoading: false });
         return {
           ok: false,
-          error: tasksRes.error || listsRes.error || 'Erro ao sincronizar tarefas.',
+          error: (!tasksRes.ok && tasksRes.error) || (!listsRes.ok && listsRes.error) || 'Erro ao sincronizar tarefas.',
         };
       }
 
       const starredSet = getStoredStarred();
+      const storedTimes = getStoredTimes();
       const localTasksMap = new Map(get().tasks.map((t) => [t.id, t]));
       const rawServerTasks = tasksRes.ok ? tasksRes.data : get().tasks;
+      let timesUpdated = false;
+
+      // Poda chaves órfãs (tarefa deletada no servidor)
+      const serverIds = new Set(rawServerTasks.map((t) => t.id));
+      let starredPruned = false;
+      for (const id of Array.from(starredSet)) {
+        if (!serverIds.has(id)) {
+          starredSet.delete(id);
+          starredPruned = true;
+        }
+      }
+      if (starredPruned) saveStoredStarred(starredSet);
+      let timesPruned = false;
+      for (const id of Object.keys(storedTimes)) {
+        if (!serverIds.has(id)) {
+          delete storedTimes[id];
+          timesPruned = true;
+        }
+      }
 
       const enrichedTasks = rawServerTasks.map((t) => {
         // If this task has an active optimistic mutation in flight, preserve the local optimistic state
@@ -241,11 +287,44 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           const local = localTasksMap.get(t.id);
           if (local) return local;
         }
+
+        // Auto-detect time from notes or title in "00:00" format (e.g. set from mobile or web)
+        const detectedTime = extractTimeFromText(t.notes) || extractTimeFromText(t.title);
+        const time = storedTimes[t.id] || detectedTime || t.time;
+
+        if (detectedTime && storedTimes[t.id] !== detectedTime) {
+          storedTimes[t.id] = detectedTime;
+          timesUpdated = true;
+        }
+
+        const starred = starredSet.has(t.id);
+        // Preserva referência se nada local mudou (ajuda React.memo)
+        const local = localTasksMap.get(t.id);
+        if (
+          local &&
+          !pendingTaskActionIds.has(t.id) &&
+          local.starred === starred &&
+          local.time === time &&
+          local.title === t.title &&
+          local.notes === t.notes &&
+          local.completed === t.completed &&
+          local.due === t.due &&
+          local.updatedAt === t.updatedAt &&
+          local.subtasks === t.subtasks
+        ) {
+          return local;
+        }
+
         return {
           ...t,
-          starred: starredSet.has(t.id),
+          starred,
+          time,
         };
       });
+
+      if (timesUpdated || timesPruned) {
+        saveStoredTimes(storedTimes);
+      }
 
       // Preserve any optimistic tasks that were just created locally and haven't appeared on the server yet
       for (const [id, localTask] of localTasksMap.entries()) {
@@ -298,8 +377,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
       set({ isLoading: true });
 
-      // Switch to real GoogleTasksService
-      currentService = new GoogleTasksService({ accessToken: authRes.data.accessToken });
+      // Switch to real GoogleTasksService via factory (desacoplado)
+      currentService = createTasksService(authRes.data.accessToken);
       set({ isGoogleConnected: true });
 
       const syncResult = await get().syncTasks({ silent: false });
@@ -316,7 +395,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   disconnectGoogle: async () => {
     await window.electronAPI?.googleLogout();
-    currentService = new MockTasksService();
+    currentService = createTasksService();
     set({
       isGoogleConnected: false,
       isSyncing: false,
@@ -355,11 +434,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   saveTaskFromModal: async (params) => {
+    const finalNotes = syncTimeToNotes(params.notes, params.time);
+
     if (params.id) {
       // Edit existing task
       const { tasks, moveTaskToList, updateTask } = get();
       const existing = tasks.find((t) => t.id === params.id);
       if (!existing) return;
+
+      const storedTimes = getStoredTimes();
+      if (params.time) {
+        storedTimes[params.id] = params.time;
+      } else {
+        delete storedTimes[params.id];
+      }
+      saveStoredTimes(storedTimes);
 
       // Optimistic update
       set((state) => ({
@@ -368,8 +457,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             ? {
                 ...t,
                 title: params.title,
-                notes: params.notes,
+                notes: finalNotes,
                 due: params.due,
+                time: params.time,
               }
             : t
         ),
@@ -382,8 +472,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
       await updateTask(params.id, {
         title: params.title,
-        notes: params.notes,
+        notes: finalNotes,
         due: params.due,
+        time: params.time,
       });
 
       set({ isTaskModalOpen: false, editingTask: null, modalTargetListId: null });
@@ -393,13 +484,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         listId: params.listId,
         title: params.title,
         due: params.due,
-        notes: params.notes,
+        notes: finalNotes,
       });
 
       if (res.ok) {
+        if (params.time) {
+          const storedTimes = getStoredTimes();
+          storedTimes[res.data.id] = params.time;
+          saveStoredTimes(storedTimes);
+        }
+
         const newTask: Task = {
           ...res.data,
+          notes: finalNotes,
           starred: false,
+          time: params.time,
         };
 
         set((state) => ({
@@ -514,14 +613,32 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
     }
 
+    const detectedTime = extractTimeFromText(title);
+    const initialNotes = detectedTime ? syncTimeToNotes('', detectedTime) : undefined;
+
     const res = await currentService.createTask({
       listId: targetListId,
       title: title.trim(),
       due,
+      notes: initialNotes,
     });
 
     if (res.ok) {
-      set((state) => ({ tasks: [...state.tasks, res.data] }));
+      if (detectedTime) {
+        const storedTimes = getStoredTimes();
+        storedTimes[res.data.id] = detectedTime;
+        saveStoredTimes(storedTimes);
+      }
+      set((state) => ({
+        tasks: [
+          ...state.tasks,
+          {
+            ...res.data,
+            notes: initialNotes || res.data.notes,
+            time: detectedTime,
+          },
+        ],
+      }));
     }
   },
 
@@ -531,9 +648,36 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     pendingTaskActionIds.add(taskId);
 
+    let resolvedTime = updates.time;
+    if (resolvedTime === undefined) {
+      if (updates.notes !== undefined) {
+        resolvedTime = extractTimeFromText(updates.notes);
+      } else if (updates.title !== undefined) {
+        resolvedTime = extractTimeFromText(updates.title);
+      }
+    }
+
+    if (resolvedTime !== undefined) {
+      const storedTimes = getStoredTimes();
+      if (resolvedTime) {
+        storedTimes[taskId] = resolvedTime;
+      } else {
+        delete storedTimes[taskId];
+      }
+      saveStoredTimes(storedTimes);
+    }
+
     // Optimistic update
     set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              ...updates,
+              ...(resolvedTime !== undefined ? { time: resolvedTime } : {}),
+            }
+          : t
+      ),
     }));
 
     try {
@@ -569,6 +713,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const res = await currentService.moveTaskToList(taskId, targetListId);
       if (res.ok) {
         const newTaskId = res.data.id;
+        if (prevTask.time) {
+          const storedTimes = getStoredTimes();
+          storedTimes[newTaskId] = prevTask.time;
+          delete storedTimes[taskId];
+          saveStoredTimes(storedTimes);
+        }
+
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === taskId
@@ -609,6 +760,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!deletedTask) return;
 
     pendingTaskActionIds.add(taskId);
+
+    const storedTimes = getStoredTimes();
+    if (storedTimes[taskId]) {
+      delete storedTimes[taskId];
+      saveStoredTimes(storedTimes);
+    }
 
     // Optimistic deletion
     set((state) => ({
@@ -669,17 +826,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   deleteList: async (listId) => {
-    const { activeFilter } = get();
+    const snapshot = { lists: get().lists, tasks: get().tasks, activeFilter: get().activeFilter };
     set((state) => {
       const nextLists = state.lists.filter((l) => l.id !== listId);
       saveStoredListOrder(nextLists.map((l) => l.id));
       return {
         lists: nextLists,
         tasks: state.tasks.filter((t) => t.listId !== listId),
-        activeFilter: activeFilter === listId ? 'all' : activeFilter,
+        activeFilter: snapshot.activeFilter === listId ? 'all' : snapshot.activeFilter,
       };
     });
-    await currentService.deleteList(listId);
+    try {
+      const res = await currentService.deleteList(listId);
+      if (!res.ok) {
+        set({ lists: snapshot.lists, tasks: snapshot.tasks, activeFilter: snapshot.activeFilter });
+      }
+    } catch {
+      set({ lists: snapshot.lists, tasks: snapshot.tasks, activeFilter: snapshot.activeFilter });
+    }
   },
 
   reorderList: (sourceListId: string, targetListId: string) => {
@@ -701,20 +865,46 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const trimmed = title.trim();
     if (!trimmed) return;
 
-    const res = await currentService.addSubtask(taskId, trimmed);
-    if (res.ok && res.data.subtasks && res.data.subtasks.length > 0) {
-      const createdSubtask = res.data.subtasks[0];
-      // Append subtask locally without full network refetch
+    const tempId = `temp-sub-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    pendingTaskActionIds.add(tempId);
+    pendingTaskActionIds.add(taskId);
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, subtasks: [...t.subtasks, { id: tempId, parentId: taskId, title: trimmed, completed: false }] }
+          : t
+      ),
+    }));
+
+    try {
+      const res = await currentService.addSubtask(taskId, trimmed);
+      if (res.ok && res.data.subtasks && res.data.subtasks.length > 0) {
+        const createdSubtask = res.data.subtasks[0];
+        // Troca tempId pelo id real
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId
+              ? { ...t, subtasks: t.subtasks.map((s) => (s.id === tempId ? createdSubtask : s)) }
+              : t
+          ),
+        }));
+      } else {
+        // Rollback do otimista
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== tempId) } : t
+          ),
+        }));
+      }
+    } catch {
       set((state) => ({
         tasks: state.tasks.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                subtasks: [...t.subtasks, createdSubtask],
-              }
-            : t
+          t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== tempId) } : t
         ),
       }));
+    } finally {
+      pendingTaskActionIds.delete(tempId);
+      pendingTaskActionIds.delete(taskId);
     }
   },
 
@@ -831,20 +1021,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   clearCompletedTasks: async (listId) => {
-    const { lists } = get();
+    const snapshot = get().tasks;
     if (listId === 'all' || listId === 'starred') {
-      // Clear across all user lists
-      for (const l of lists) {
-        await currentService.clearCompletedTasks(l.id);
-      }
-      set((state) => ({
-        tasks: state.tasks.filter((t) => !t.completed),
-      }));
+      // Clear across all user lists em paralelo
+      set((state) => ({ tasks: state.tasks.filter((t) => !t.completed) }));
+      const results = await Promise.allSettled(get().lists.map((l) => currentService.clearCompletedTasks(l.id)));
+      const failed = results.some((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      if (failed) set({ tasks: snapshot });
     } else {
       set((state) => ({
         tasks: state.tasks.filter((t) => t.listId !== listId || !t.completed),
       }));
-      await currentService.clearCompletedTasks(listId);
+      try {
+        const res = await currentService.clearCompletedTasks(listId);
+        if (!res.ok) set({ tasks: snapshot });
+      } catch {
+        set({ tasks: snapshot });
+      }
     }
   },
 
@@ -946,6 +1139,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       subtasks: [],
       updatedAt: new Date().toISOString(),
     };
+    const snapshot = get().tasks;
 
     set((state) => ({
       tasks: [
@@ -958,7 +1152,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       ],
     }));
 
-    await currentService.promoteSubtask(taskId, subtaskId);
+    try {
+      const res = await currentService.promoteSubtask(taskId, subtaskId);
+      if (!res.ok) set({ tasks: snapshot });
+    } catch {
+      set({ tasks: snapshot });
+    }
   },
 }));
 

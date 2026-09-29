@@ -1,5 +1,8 @@
 import { Task } from '../contracts/tasks.types';
+import { Result, success } from '../contracts/api.types';
 import { parseDueDate } from './dateUtils';
+
+/** @effectful — scheduler com I/O (localStorage, Notification, electronAPI, timers). Não é função pura. */
 
 const STORAGE_KEY = 'google_tasks_notified_reminders';
 const SNOOZE_KEY = 'google_tasks_snoozed_tasks';
@@ -82,9 +85,35 @@ function getStoredSnoozed(): Record<string, number> {
 }
 
 function saveStoredSnoozed(record: Record<string, number>) {
-  snoozedCache = record;
+  // Prune expirados + teto de 500 entradas para evitar crescimento ilimitado
+  const now = Date.now();
+  const pruned: Record<string, number> = {};
+  for (const [key, until] of Object.entries(record)) {
+    if (until > now - 48 * 60 * 60 * 1000) pruned[key] = until;
+  }
+  const keys = Object.keys(pruned);
+  if (keys.length > 500) {
+    keys.slice(0, keys.length - 500).forEach((k) => delete pruned[k]);
+  }
+  snoozedCache = pruned;
   try {
-    localStorage.setItem(SNOOZE_KEY, JSON.stringify(record));
+    localStorage.setItem(SNOOZE_KEY, JSON.stringify(pruned));
+  } catch {}
+}
+
+export function invalidateNotificationCaches(): void {
+  remindersCache = null;
+  snoozedCache = null;
+  notificationsEnabledCache = null;
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEY || e.key === SNOOZE_KEY || e.key === NOTIFICATIONS_ENABLED_KEY) {
+        invalidateNotificationCaches();
+      }
+    });
   } catch {}
 }
 
@@ -157,8 +186,8 @@ export function checkTaskReminders(tasks: Task[]) {
     const reminderTime = dueDate.getTime();
     const diffMs = currentTimestamp - reminderTime;
 
-    // Trigger if the scheduled time has arrived within a 15-minute window
-    if (diffMs >= 0 && diffMs <= 15 * 60 * 1000) {
+    // Trigger if the scheduled time has arrived (within 24 hours) and has not been notified yet
+    if (diffMs >= 0 && diffMs <= 24 * 60 * 60 * 1000) {
       const reminderKey = `${task.id}:${task.due}:${task.time || 'allday'}`;
 
       if (!notifiedMap[reminderKey]) {
@@ -209,25 +238,27 @@ export function startNotificationScheduler(getTasks: () => Task[]): () => void {
  * Triggers an immediate test desktop notification so the user can verify
  * Windows toasts and sound.
  */
-export async function testDesktopNotification(): Promise<{ ok: boolean; error?: string }> {
+export async function testDesktopNotification(): Promise<Result<void>> {
   if (window.electronAPI?.testNotification) {
-    return await window.electronAPI.testNotification();
+    const res = await window.electronAPI.testNotification();
+    if (res.ok) return success(undefined as void);
+    return { ok: false as const, error: res.error || 'Falha ao testar notificação' };
   }
 
   if ('Notification' in window) {
     if (Notification.permission === 'granted') {
       new Notification('Google Tasks Desktop', {
-        body: '🔔 As notificações nativas do Windows estão funcionando!',
+        body: 'Notificações ativas! Você receberá lembretes das suas tarefas.',
       });
-      return { ok: true };
+      return success(undefined as void);
     }
 
     const perm = await Notification.requestPermission();
     if (perm === 'granted') {
       new Notification('Google Tasks Desktop', {
-        body: '🔔 As notificações nativas do Windows estão funcionando!',
+        body: 'Notificações ativas! Você receberá lembretes das suas tarefas.',
       });
-      return { ok: true };
+      return success(undefined as void);
     }
     return { ok: false, error: 'Permissão de notificação negada no navegador' };
   }

@@ -39,6 +39,9 @@ export const darkThemeColors: Readonly<ThemeColors> = Object.freeze({
   success: '#81c995',
   overdue: '#f28b82',
   important: '#7fcfff',
+  inverseSurface: '#e3e3e3',
+  inverseOnSurface: '#131314',
+  scrim: '#000000',
 });
 
 export const lightThemeColors: Readonly<ThemeColors> = Object.freeze({
@@ -80,6 +83,9 @@ export const lightThemeColors: Readonly<ThemeColors> = Object.freeze({
   success: '#1e8e3e',
   overdue: '#b3261e',
   important: '#1a73e8',
+  inverseSurface: '#131314',
+  inverseOnSurface: '#e3e3e3',
+  scrim: '#000000',
 });
 
 // Helper mapping for programmatic consumption
@@ -145,4 +151,7 @@ export const themeCssVariableMap: Record<keyof ThemeColors, string> = Object.fre
   success: '--md-sys-color-success',
   overdue: '--md-sys-color-overdue',
   important: '--md-sys-color-important',
+  inverseSurface: '--md-sys-color-inverse-surface',
+  inverseOnSurface: '--md-sys-color-inverse-on-surface',
+  scrim: '--md-sys-color-scrim',
 });

@@ -13,7 +13,8 @@ export const M3Menu: React.FC<M3MenuProps> = ({
 }) => {
   return (
     <div
-      className={`bg-m3-surface-container-high rounded-2xl shadow-m3-3 py-2 z-30 text-xs text-m3-on-surface animate-in fade-in zoom-in-95 duration-150 select-none ${width} ${className}`}
+      role="menu"
+      className={`bg-m3-surface-container-high rounded-m3-sm shadow-m3-3 py-2 z-30 text-xs text-m3-on-surface animate-in fade-in zoom-in-95 duration-150 select-none ${width} ${className}`}
     >
       {children}
     </div>
@@ -49,13 +50,14 @@ export const M3MenuItem: React.FC<M3MenuItemProps> = ({
   return (
     <button
       type="button"
+      role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-4 py-2 text-left transition-colors duration-150 ${
+      className={`w-full flex items-center justify-between px-4 py-2 text-left transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none ${
         disabled
-          ? 'opacity-40 cursor-not-allowed text-m3-outline'
+          ? 'opacity-40 cursor-not-allowed text-m3-on-surface-variant'
           : isDanger
-          ? 'text-m3-error hover:bg-m3-error/10 cursor-pointer'
+          ? 'text-m3-error hover:bg-m3-error/10 active:bg-m3-error/15 cursor-pointer'
           : 'text-m3-on-surface hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 cursor-pointer'
       }`}
     >
@@ -80,7 +82,7 @@ export const M3MenuItem: React.FC<M3MenuItemProps> = ({
         <div className="flex flex-col truncate min-w-0">
           <span className="truncate text-xs font-normal">{label}</span>
           {sublabel && (
-            <span className="text-[10px] text-m3-outline/70 mt-0.5 truncate leading-tight">
+            <span className="text-[0.625rem] text-m3-on-surface-variant mt-0.5 truncate leading-tight">
               {sublabel}
             </span>
           )}

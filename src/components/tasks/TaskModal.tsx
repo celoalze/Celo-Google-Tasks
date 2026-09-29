@@ -5,30 +5,31 @@ import {
   extractDateString,
   toGoogleDueIso,
   formatFullDate,
+  extractTimeFromText,
+  getDisplayNotes,
 } from '../../core/dateUtils';
 import { M3Checkbox } from '../ui/M3Checkbox';
 import { M3IconButton } from '../ui/M3IconButton';
 
 export const TaskModal: React.FC = () => {
-  const {
-    isTaskModalOpen,
-    editingTask,
-    modalTargetListId,
-    closeTaskModal,
-    saveTaskFromModal,
-    deleteTask,
-    lists,
-    addSubtask,
-    toggleSubtaskCompletion,
-    deleteSubtask,
-    promoteSubtask,
-  } = useTaskStore();
+  const isTaskModalOpen = useTaskStore((s) => s.isTaskModalOpen);
+  const editingTask = useTaskStore((s) => s.editingTask);
+  const modalTargetListId = useTaskStore((s) => s.modalTargetListId);
+  const closeTaskModal = useTaskStore((s) => s.closeTaskModal);
+  const saveTaskFromModal = useTaskStore((s) => s.saveTaskFromModal);
+  const deleteTask = useTaskStore((s) => s.deleteTask);
+  const lists = useTaskStore((s) => s.lists);
+  const addSubtask = useTaskStore((s) => s.addSubtask);
+  const toggleSubtaskCompletion = useTaskStore((s) => s.toggleSubtaskCompletion);
+  const deleteSubtask = useTaskStore((s) => s.deleteSubtask);
+  const promoteSubtask = useTaskStore((s) => s.promoteSubtask);
 
   const t = useI18nStore((state) => state.t);
   const locale = useI18nStore((state) => state.locale);
 
   const [title, setTitle] = useState('');
   const [dateStr, setDateStr] = useState('');
+  const [timeStr, setTimeStr] = useState('');
   const [notes, setNotes] = useState('');
   const [listId, setListId] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -38,11 +39,18 @@ export const TaskModal: React.FC = () => {
     if (editingTask) {
       setTitle(editingTask.title);
       setDateStr(extractDateString(editingTask.due) || '');
-      setNotes(editingTask.notes || '');
+      const detectedTime =
+        editingTask.time ||
+        extractTimeFromText(editingTask.notes) ||
+        extractTimeFromText(editingTask.title) ||
+        '';
+      setTimeStr(detectedTime);
+      setNotes(getDisplayNotes(editingTask.notes, detectedTime));
       setListId(editingTask.listId);
     } else {
       setTitle('');
       setDateStr(new Date().toISOString().split('T')[0]);
+      setTimeStr('');
       setNotes('');
       setListId(modalTargetListId || lists[0]?.id || '');
     }
@@ -62,6 +70,7 @@ export const TaskModal: React.FC = () => {
       listId: listId || lists[0]?.id || '@default',
       title: title.trim(),
       due,
+      time: dateStr && timeStr ? timeStr : undefined,
       notes: notes.trim(),
     });
   };
@@ -74,9 +83,9 @@ export const TaskModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
+    <div role="dialog" aria-modal="true" aria-label={editingTask ? t('taskModal.editTitle') : t('taskModal.createTitle')} className="fixed inset-0 bg-m3-scrim/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
       <div
-        className="bg-m3-surface-container-high rounded-[24px] max-w-[460px] w-full p-6 shadow-2xl animate-in zoom-in-95 duration-150 relative text-m3-on-surface"
+        className="bg-m3-surface-container-high rounded-m3-3xl max-w-[460px] w-full p-6 shadow-m3-3 animate-in zoom-in-95 duration-150 relative text-m3-on-surface"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Right Action Icons (Close & Delete) - Exactly matching Screenshot */}
@@ -101,19 +110,24 @@ export const TaskModal: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Title Input */}
           <div>
+            <label htmlFor="task-modal-title" className="sr-only">
+              {t('taskModal.titlePlaceholder')}
+            </label>
             <input
+              id="task-modal-title"
               type="text"
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t('taskModal.titlePlaceholder')}
-              className="w-full bg-transparent text-lg font-medium text-m3-on-surface placeholder:text-m3-outline pb-2 border-b border-m3-outline-variant/40 focus:border-m3-primary focus:outline-none transition-colors"
+              aria-label={t('taskModal.titlePlaceholder')}
+              className="w-full bg-transparent text-lg font-medium text-m3-on-surface placeholder:text-m3-on-surface-variant/70 pb-2 border-b border-m3-outline-variant focus:border-m3-primary focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none transition-colors"
             />
           </div>
 
           {/* Date & Time Row */}
           <div className="flex items-start gap-3 pt-2">
-            <span className="material-symbols-rounded text-m3-outline text-[22px] pt-1">
+            <span aria-hidden className="material-symbols-rounded text-m3-on-surface-variant text-[1.375rem] pt-1">
               schedule
             </span>
 
@@ -123,7 +137,8 @@ export const TaskModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowDatePicker(!showDatePicker)}
-                  className="px-3.5 py-1.5 rounded-lg bg-m3-surface-container-highest hover:bg-m3-surface-bright text-xs font-medium text-m3-on-surface transition-colors flex items-center gap-1.5"
+                  aria-expanded={showDatePicker}
+                  className="px-3.5 py-1.5 rounded-m3-sm bg-m3-surface-container-highest hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 text-xs font-medium text-m3-on-surface transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none flex items-center gap-1.5"
                 >
                   <span className="material-symbols-rounded text-[16px] text-m3-primary">event</span>
                   <span>{formatFullDate(dateStr, locale)}</span>
@@ -132,26 +147,68 @@ export const TaskModal: React.FC = () => {
                 {dateStr && (
                   <button
                     type="button"
-                    onClick={() => setDateStr('')}
+                    onClick={() => {
+                      setDateStr('');
+                      setTimeStr('');
+                    }}
                     title={t('dateTime.removeDate') || 'Remover data'}
-                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 text-m3-outline hover:text-m3-on-surface transition-colors"
+                    aria-label={t('dateTime.removeDate') || 'Remover data'}
+                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 text-m3-on-surface-variant hover:text-m3-on-surface transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
                   >
-                    <span className="material-symbols-rounded text-[16px]">close</span>
+                    <span className="material-symbols-rounded text-[1rem]">close</span>
                   </button>
+                )}
+
+                {/* Time Chip */}
+                {dateStr && (
+                  <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-m3-sm bg-m3-surface-container-highest hover:bg-m3-on-surface/10 text-xs font-medium text-m3-on-surface transition-colors">
+                      <span className="material-symbols-rounded text-[1rem] text-m3-primary">schedule</span>
+                      <label htmlFor="task-modal-time" className="sr-only">
+                        {t('dateTime.addTime') || 'Definir horário'}
+                      </label>
+                      <input
+                        id="task-modal-time"
+                        type="time"
+                        value={timeStr}
+                        onChange={(e) => setTimeStr(e.target.value)}
+                        className="bg-transparent text-xs text-m3-on-surface focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none cursor-pointer"
+                        title={t('dateTime.addTime') || 'Definir horário'}
+                      />
+                    </div>
+                    {timeStr && (
+                      <button
+                        type="button"
+                        onClick={() => setTimeStr('')}
+                        title={t('dateTime.removeTime') || 'Remover horário'}
+                        aria-label={t('dateTime.removeTime') || 'Remover horário'}
+                        className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-m3-on-surface/10 active:bg-m3-on-surface/15 text-m3-on-surface-variant hover:text-m3-on-surface transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
+                      >
+                        <span className="material-symbols-rounded text-[1rem]">close</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
               {/* Inline Date Input dropdown when clicking date chip */}
               {showDatePicker && (
-                <div className="p-2 bg-m3-surface-container rounded-lg animate-in fade-in">
+                <div className="p-2 bg-m3-surface-container rounded-m3-sm animate-in fade-in">
+                  <label htmlFor="task-modal-date" className="sr-only">
+                    {t('dateTime.chooseDate') || 'Escolher data'}
+                  </label>
                   <input
+                    id="task-modal-date"
                     type="date"
                     value={dateStr}
                     onChange={(e) => {
                       setDateStr(e.target.value);
                       setShowDatePicker(false);
                     }}
-                    className="w-full bg-transparent text-xs text-m3-on-surface focus:outline-none cursor-pointer"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setShowDatePicker(false);
+                    }}
+                    className="w-full bg-transparent text-xs text-m3-on-surface focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none cursor-pointer"
                   />
                 </div>
               )}

@@ -9,3 +9,4 @@ export * from './M3Badge';
 export * from './DateTimePickers';
 export * from './M3Switch';
 export * from './ErrorBoundary';
+export * from './UserAvatar';

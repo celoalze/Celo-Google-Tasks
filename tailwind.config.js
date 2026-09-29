@@ -47,6 +47,9 @@ export default {
           'star-active': 'rgb(var(--md-sys-color-star) / <alpha-value>)',
           success: 'rgb(var(--md-sys-color-success) / <alpha-value>)',
           overdue: 'rgb(var(--md-sys-color-overdue) / <alpha-value>)',
+          'inverse-surface': 'rgb(var(--md-sys-color-inverse-surface) / <alpha-value>)',
+          'inverse-on-surface': 'rgb(var(--md-sys-color-inverse-on-surface) / <alpha-value>)',
+          scrim: 'rgb(var(--md-sys-color-scrim) / <alpha-value>)',
         },
       },
       fontFamily: {

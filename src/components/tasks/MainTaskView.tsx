@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { memo, useState, useEffect, useMemo, useCallback } from 'react';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useI18nStore } from '../../store/useI18nStore';
 import { ListCardColumn } from './ListCardColumn';
 import { Task } from '../../contracts/tasks.types';
 import { AllListsHiddenIllustration } from '../illustrations';
 
-export const MainTaskView: React.FC = () => {
+export const MainTaskView: React.FC = memo(() => {
   const tasks = useTaskStore((state) => state.tasks);
   const lists = useTaskStore((state) => state.lists);
   const activeFilter = useTaskStore((state) => state.activeFilter);
@@ -107,9 +107,13 @@ export const MainTaskView: React.FC = () => {
     return cols;
   }, [displayLists, numCols]);
 
+  const starredTasks = useMemo(
+    () => (activeFilter === 'starred' ? filteredTasks.filter((t) => t.starred) : []),
+    [activeFilter, filteredTasks]
+  );
+
   // 1. Starred Smart Filter View
   if (activeFilter === 'starred') {
-    const starredTasks = filteredTasks.filter((t) => t.starred);
     return (
       <main className="flex-1 h-full min-w-0 overflow-y-auto bg-m3-surface p-4 sm:p-5">
         <div className="max-w-[480px]">
@@ -178,13 +182,13 @@ export const MainTaskView: React.FC = () => {
         <div className="flex-1 flex flex-col items-center justify-center py-20 text-center select-none">
           <AllListsHiddenIllustration className="w-36 h-36 mb-3" />
           <p className="text-sm font-medium text-m3-on-surface">{t('board.noListsSelected')}</p>
-          <p className="text-xs text-m3-outline mt-1 max-w-xs">
+          <p className="text-xs text-m3-on-surface-variant mt-1 max-w-xs">
             {t('board.noListsSelectedDesc')}
           </p>
           <button
             type="button"
             onClick={setAllListsVisible}
-            className="mt-4 px-4 py-2 text-xs font-medium text-m3-primary hover:bg-m3-primary/10 rounded-full transition-colors"
+            className="mt-4 px-4 py-2 text-xs font-medium text-m3-primary hover:bg-m3-primary/10 active:bg-m3-primary/15 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-m3-primary focus-visible:outline-none"
           >
             {t('board.showAllLists')}
           </button>
@@ -192,4 +196,6 @@ export const MainTaskView: React.FC = () => {
       )}
     </main>
   );
-};
+});
+
+MainTaskView.displayName = 'MainTaskView';

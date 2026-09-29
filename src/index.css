@@ -49,6 +49,9 @@
   --md-sys-color-success: 129 201 149;           /* #81c995 */
   --md-sys-color-overdue: 242 139 130;           /* #f28b82 */
   --md-sys-color-important: 127 207 255;         /* #7fcfff */
+  --md-sys-color-inverse-surface: 227 227 227;
+  --md-sys-color-inverse-on-surface: 19 19 20;
+  --md-sys-color-scrim: 0 0 0;
 
   /* Google Tasks Official Web SVGs & Artwork (Dark Mode) */
   --tasks-image-url-welcome: url(/tasks/tasks-welcome-illustration-dark-2x.svg);
@@ -117,6 +120,9 @@
   --md-sys-color-success: 30 142 62;             /* #1e8e3e */
   --md-sys-color-overdue: 179 38 30;             /* #b3261e */
   --md-sys-color-important: 26 115 232;          /* #1a73e8 */
+  --md-sys-color-inverse-surface: 19 19 20;
+  --md-sys-color-inverse-on-surface: 227 227 227;
+  --md-sys-color-scrim: 0 0 0;
 
   /* Google Tasks Official Web SVGs & Artwork (Light Mode) */
   --tasks-image-url-welcome: url(/tasks/tasks-welcome-illustration-light-2x.svg);
@@ -233,4 +239,27 @@ select {
 
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .titlebar-drag-region,
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    overflow: auto !important;
+  }
+  main {
+    overflow: visible !important;
+  }
 }

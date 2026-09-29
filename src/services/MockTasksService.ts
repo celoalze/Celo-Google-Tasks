@@ -2,6 +2,13 @@ import { ITasksService } from './ITasksService';
 import { Result, success, failure } from '../contracts/api.types';
 import { Task, TaskList, UserProfile } from '../contracts/tasks.types';
 
+function newId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
 export class MockTasksService implements ITasksService {
   private user: UserProfile = {
     displayName: 'Conta Google',
@@ -23,7 +30,7 @@ export class MockTasksService implements ITasksService {
 
   async createList(title: string): Promise<Result<TaskList>> {
     const newList: TaskList = {
-      id: `list-${Date.now()}`,
+      id: newId('list'),
       title,
       icon: '📋',
       updated: new Date().toISOString(),
@@ -47,7 +54,7 @@ export class MockTasksService implements ITasksService {
   async deleteList(listId: string): Promise<Result<void>> {
     this.lists = this.lists.filter((l) => l.id !== listId);
     this.tasks = this.tasks.filter((t) => t.listId !== listId);
-    return success(undefined);
+    return success(undefined as void);
   }
 
   async getTasks(): Promise<Result<Task[]>> {
@@ -60,8 +67,11 @@ export class MockTasksService implements ITasksService {
     due?: string;
     notes?: string;
   }): Promise<Result<Task>> {
+    if (!this.lists.some((l) => l.id === params.listId) && this.lists.length > 0) {
+      return failure('Lista não encontrada');
+    }
     const newTask: Task = {
-      id: `task-${Date.now()}`,
+      id: newId('task'),
       listId: params.listId,
       title: params.title,
       notes: params.notes || '',
@@ -77,11 +87,14 @@ export class MockTasksService implements ITasksService {
   async updateTask(
     taskId: string,
     updates: Partial<Omit<Task, 'id' | 'subtasks'>>,
-    _listId?: string
+    listId?: string
   ): Promise<Result<Task>> {
     const index = this.tasks.findIndex((t) => t.id === taskId);
     if (index === -1) {
       return failure('Tarefa não encontrada');
+    }
+    if (listId && this.tasks[index].listId !== listId) {
+      return failure('Lista não encontrada para a tarefa');
     }
     const updated = { ...this.tasks[index], ...updates, updatedAt: new Date().toISOString() };
     this.tasks[index] = updated;
@@ -91,14 +104,26 @@ export class MockTasksService implements ITasksService {
   async moveTaskToList(taskId: string, targetListId: string): Promise<Result<Task>> {
     const index = this.tasks.findIndex((t) => t.id === taskId);
     if (index === -1) return failure('Tarefa não encontrada');
-    const updated = { ...this.tasks[index], listId: targetListId };
-    this.tasks[index] = updated;
-    return success(updated);
+    const source = this.tasks[index];
+    if (source.listId === targetListId) return failure('A tarefa já está nessa lista');
+    // Simula Google: cria NOVO id no destino (não reusa id)
+    const moved: Task = {
+      ...source,
+      id: newId('task'),
+      listId: targetListId,
+      updatedAt: new Date().toISOString(),
+    };
+    this.tasks.splice(index, 1);
+    this.tasks.push(moved);
+    return success(moved);
   }
 
-  async deleteTask(taskId: string, _listId?: string): Promise<Result<void>> {
+  async deleteTask(taskId: string, listId?: string): Promise<Result<void>> {
+    if (listId && !this.tasks.some((t) => t.id === taskId && t.listId === listId)) {
+      return failure('Tarefa não encontrada na lista');
+    }
     this.tasks = this.tasks.filter((t) => t.id !== taskId);
-    return success(undefined);
+    return success(undefined as void);
   }
 
   async toggleTaskCompletion(
@@ -121,7 +146,7 @@ export class MockTasksService implements ITasksService {
 
     const task = this.tasks[index];
     const newSubtask = {
-      id: `sub-${Date.now()}`,
+      id: newId('sub'),
       parentId: taskId,
       title,
       completed: false,
@@ -171,15 +196,15 @@ export class MockTasksService implements ITasksService {
 
   async clearCompletedTasks(listId: string): Promise<Result<void>> {
     this.tasks = this.tasks.filter((t) => t.listId !== listId || !t.completed);
-    return success(undefined);
+    return success(undefined as void);
   }
 
   async moveTaskPosition(
-    _listId: string,
+    listId: string,
     taskId: string,
     options: { parent?: string; previous?: string; destinationTasklist?: string }
   ): Promise<Result<Task>> {
-    const taskIndex = this.tasks.findIndex((t) => t.id === taskId);
+    const taskIndex = this.tasks.findIndex((t) => t.id === taskId && (!listId || t.listId === listId));
     if (taskIndex === -1) return failure('Tarefa não encontrada');
     const [task] = this.tasks.splice(taskIndex, 1);
     const updatedTask: Task = {
@@ -187,12 +212,15 @@ export class MockTasksService implements ITasksService {
       listId: options.destinationTasklist || task.listId,
     };
 
+    const scopeListId = updatedTask.listId;
     if (options.previous) {
-      const prevIndex = this.tasks.findIndex((t) => t.id === options.previous);
+      const prevIndex = this.tasks.findIndex((t) => t.id === options.previous && t.listId === scopeListId);
       if (prevIndex !== -1) {
         this.tasks.splice(prevIndex + 1, 0, updatedTask);
       } else {
-        this.tasks.push(updatedTask);
+        const lastInScope = this.tasks.map((t, i) => ({ t, i })).filter(({ t }) => t.listId === scopeListId).pop();
+        if (lastInScope) this.tasks.splice(lastInScope.i + 1, 0, updatedTask);
+        else this.tasks.push(updatedTask);
       }
     } else if (options.destinationTasklist) {
       const firstInDest = this.tasks.findIndex((t) => t.listId === options.destinationTasklist);
@@ -233,4 +261,3 @@ export class MockTasksService implements ITasksService {
     return success(newTopTask);
   }
 }
-
