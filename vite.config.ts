@@ -28,9 +28,13 @@ export default defineConfig({
       closeBundle() {
         const src = path.resolve(__dirname, 'electron/preload.cjs');
         const dest = path.resolve(__dirname, 'dist-electron/preload.cjs');
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, dest);
+        if (!fs.existsSync(src)) {
+          throw new Error(`[copy-preload-cjs] source not found: ${src}`);
         }
+        // dist-electron/ may not exist yet: the electron main build runs in
+        // parallel (see Promise.all in the Vite build log), so create it.
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(src, dest);
       },
     },
   ],
